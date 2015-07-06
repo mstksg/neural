@@ -20,15 +20,19 @@ import Control.Applicative
 import Control.Monad.Trans.State
 import Data.Bifunctor
 import Data.Proxy
+import Control.Monad.ST
 import GHC.TypeLits
 import Linear
 import Linear.V
+import qualified Control.Lens as L
+import Control.Monad
 import System.Random
 import Text.Printf
 import GHC.Generics
 import qualified Data.Binary as B
 import qualified Data.List as P
 import qualified Data.Vector as V
+import qualified Data.Vector.Mutable as VM
 
 data Node :: Nat -> * -> * where
     Node :: { nodeBias :: !a, nodeWeights :: !(V i a) } -> Node i a
@@ -172,11 +176,6 @@ trainSample step f f' x y n = snd $ go x n
               l'             :: Layer j o a
               l'             = Layer ln'
           in  (deltaws, OLayer l')
-          -- let d              = runLayer l x
-          --     (delta, ln')   = unzipV $ liftA3 (adjustOutput xb) ln y d
-          --     deltaws        = delta *! (nodeWeights <$> ln')
-          --     l'             = Layer ln'
-          -- in  (deltaws, OLayer l')
         ILayer l@(Layer ln) n' ->
           let d                    = runLayer l x
               o                    = f <$> d
@@ -205,8 +204,6 @@ trainSample step f f' x y n = snd $ go x n
     -- per weight traversal
     adjustWeights :: KnownNat j => a -> Node j a -> Node j a -> Node j a
     adjustWeights delta = liftA2 (\x -> subtract (step * delta * x))
-    -- adjustWeight :: a -> a -> a -> a
-    -- adjustWeight delta x = subtract $ step * delta * x
     {-# INLINE adjustWeights #-}
 {-# INLINE trainSample #-}
 
@@ -265,16 +262,9 @@ drawNetwork = unlines
             . addDot
             . (map . map . map) (printf "% .3f")
             . networkToList
--- drawNetwork = unlines
---             . map unwords
---             . (map . map) (bracketize . unwords)
---             . (map . map . map) (printf "%.2f")
---             . networkToList
   where
     addDot :: [[[String]]] -> [[[String]]]
     addDot = concatMap $ \xs -> [xs, replicate (length xs) ["o"]]
-    -- zipUp :: [a] -> [a] -> [a]
-    -- zipUp xs ys = concat $ zipWith (\x y -> [x, y]) xs ys
     bracketize :: String -> String
     bracketize str = '[' : str ++ "]"
     padLists :: forall a. a -> [[a]] -> [[a]]
@@ -311,3 +301,14 @@ networkStructure (OLayer l) = (reflectDim (Proxy :: Proxy i), [], reflectDim (Pr
 networkStructure (ILayer l n') = (reflectDim (Proxy :: Proxy i), j : hs, o)
   where
     (j, hs, o) = networkStructure n'
+
+induceOutput :: forall i hs o a. (KnownNat i, KnownNat o, Floating a, Ord a) => a -> a -> (a, a) -> (a -> a) -> Network i hs o a -> V o a -> V i a -> V i a
+induceOutput nudge step (mn,mx) f n y x0@(V x0v) = V . fst $ foldl' g (x0v, errFrom x0) [0..V.length x0v - 1]
+  where
+    errFrom = qd y . runNetwork f n
+    g (x, e) i = let x'  = V.modify (\v -> VM.write v i . clamp . (+ nudge) =<< VM.read v i) x
+                     e'  = errFrom (V x')
+                     x'' = V.modify (\v -> VM.write v i . clamp . subtract (nudge*step/e') =<< VM.read v i) x
+                     e'' = errFrom (V x'')
+                 in  (x'', e'')
+    clamp = min mx . max mn
