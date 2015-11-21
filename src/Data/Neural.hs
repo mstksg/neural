@@ -2,7 +2,9 @@
 {-# LANGUAGE DeriveFoldable #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -15,29 +17,32 @@
 
 module Data.Neural where
 
-import Data.List
 import Control.Applicative
+import Control.Monad
+import Control.Monad.ST
 import Control.Monad.Trans.State
 import Data.Bifunctor
+import Control.DeepSeq
+import Data.List
+import Data.Foldable
+import Data.Monoid
 import Data.Proxy
-import Control.Monad.ST
+import GHC.Generics
 import GHC.TypeLits
 import Linear
 import Linear.V
-import qualified Control.Lens as L
-import Control.Monad
 import System.Random
 import Text.Printf
-import GHC.Generics
-import qualified Data.Binary as B
-import qualified Data.List as P
-import qualified Data.Vector as V
+import Numeric.AD.Rank1.Forward
+import qualified Control.Lens        as L
+import qualified Data.Binary         as B
+import qualified Data.List           as P
+import qualified Data.Vector         as V
 import qualified Data.Vector.Mutable as VM
 
 data Node :: Nat -> * -> * where
     Node :: { nodeBias :: !a, nodeWeights :: !(V i a) } -> Node i a
-  deriving (Show, Foldable, Traversable, Generic)
-  -- TODO: manually define Foldable, Traversable
+  deriving (Show, Generic)
 
 newtype Layer :: Nat -> Nat -> * -> * where
     Layer :: { layerNodes :: V o (Node i a) } -> Layer i o a
@@ -72,6 +77,47 @@ instance (KnownNat i, Additive (V i)) => Additive (Node i) where
     {-# INLINE liftU2 #-}
     liftI2 f (Node b1 w1) (Node b2 w2) = Node (f b1 b2) (liftI2 f w1 w2)
     {-# INLINE liftI2 #-}
+
+instance Foldable (Node i) where
+    fold (Node b w) = b <> fold w
+    {-# INLINE fold #-}
+    foldMap f (Node b w) = f b <> foldMap f w
+    {-# INLINE foldMap #-}
+    foldr f z (Node b w) = b `f` foldr f z w
+    {-# INLINE foldr #-}
+    foldl f z (Node b w) = foldl f (f z b) w
+    {-# INLINE foldl #-}
+    foldl' f z (Node b w) = let z' = f z b in z' `seq` foldl f z' w
+    {-# INLINE foldl' #-}
+    -- foldr1 f (Node b w) = ???
+    foldl1 f (Node b w) = foldl f b w
+    {-# INLINE foldl1 #-}
+    toList (Node b w) = b : toList w
+    {-# INLINE toList #-}
+    null _ = False
+    {-# INLINE null #-}
+    length (Node _ w) = 1 + length w
+    {-# INLINE length #-}
+    elem x (Node b w) = (x == b) || elem x w
+    {-# INLINE elem #-}
+    maximum (Node b w) = b `max` maximum w
+    {-# INLINE maximum #-}
+    minimum (Node b w) = b `min` minimum w
+    {-# INLINE minimum #-}
+    sum (Node b w) = b + sum w
+    {-# INLINE sum #-}
+    product (Node b w) = b * product w
+    {-# INLINE product #-}
+
+instance Traversable (Node i) where
+    traverse f (Node b w) = Node <$> f b <*> traverse f w
+    {-# INLINE traverse #-}
+    sequenceA (Node b w) = Node <$> b <*> sequenceA w
+    {-# INLINE sequenceA #-}
+    mapM = traverse
+    {-# INLINE mapM #-}
+    sequence = sequenceA
+    {-# INLINE sequence #-}
 
 instance (KnownNat i, KnownNat o) => Applicative (Layer i o) where
     pure = Layer . V . V.replicate (reflectDim (Proxy :: Proxy o)) . pure
@@ -133,16 +179,16 @@ instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs
     put (ILayer l n') = B.put l *> B.put n'
     get = ILayer <$> B.get <*> B.get
 
+instance NFData a => NFData (Node i a)
+instance NFData a => NFData (Layer i o a)
+instance NFData a => NFData (Network i hs o a) where
+    rnf (OLayer (force -> !l)) = ()
+    rnf (ILayer (force -> !l) (force -> !n)) = ()
 
 deriving instance (KnownNat i, KnownNat o, Random a) => Random (Layer i o a)
 deriving instance Show a => Show (Network i hs o a)
 deriving instance Foldable (Network i hs o)
 deriving instance Traversable (Network i hs o)
-
--- liftA4 :: Applicative f
---        => (a -> b -> c -> d -> e)
---        -> f a -> f b -> f c -> f d -> f e
--- liftA4 f j k l m = f <$> j <*> k <*> l <*> m
 
 unzipV :: V i (a, b) -> (V i a, V i b)
 unzipV (V v) = (V x, V y)
@@ -151,11 +197,11 @@ unzipV (V v) = (V x, V y)
 {-# INLINE unzipV #-}
 
 trainSample :: forall i o a hs. (KnownNat i, KnownNat o, Num a)
-            => a -> (a -> a) -> (a -> a)
+            => a -> (Forward a -> Forward a) -> (Forward a -> Forward a)
             -> V i a -> V o a
             -> Network i hs o a
             -> Network i hs o a
-trainSample step f f' x y n = snd $ go x n
+trainSample step f g x y n = snd $ go x n
   where
     -- x: input
     -- y: target
@@ -178,7 +224,7 @@ trainSample step f f' x y n = snd $ go x n
           in  (deltaws, OLayer l')
         ILayer l@(Layer ln) n' ->
           let d                    = runLayer l x
-              o                    = f <$> d
+              o                    = fst . diff' f <$> d
               (deltaos, n'')       = go o n'
               (delta, ln')         = unzipV $ liftA3 (adjustHidden xb) ln deltaos d
               deltaws              = delta *! (nodeWeights <$> ln')
@@ -192,13 +238,15 @@ trainSample step f f' x y n = snd $ go x n
     adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
     adjustOutput xb node y d = (delta, adjustWeights delta xb node)
       where
-        delta = (f d - y) * f' d
+        delta = let (o, o') = diff' g d
+                in  (o - y) * o'
+        -- delta = (f d - y) * f' d
     {-# INLINE adjustOutput #-}
         -- delta = d - y
     adjustHidden :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
     adjustHidden xb node deltao d = (delta, adjustWeights delta xb node)
       where
-        delta = deltao * f' d
+        delta = deltao * diff f d
     {-# INLINE adjustHidden #-}
         -- delta = deltao
     -- per weight traversal
@@ -211,36 +259,46 @@ runLayer :: (KnownNat i, Num a) => Layer i o a -> V i a -> V o a
 runLayer (Layer l) v = l !* Node 1 v
 {-# INLINE runLayer #-}
 
-runNetwork :: (KnownNat i, Num a) => (a -> a) -> Network i hs o a -> V i a -> V o a
-runNetwork f n v = case n of
-                     OLayer l    ->                  f <$> runLayer l v
-                     -- OLayer l    ->                        runLayer l v
-                     ILayer l n' -> runNetwork f n' (f <$> runLayer l v)
+runNetwork :: forall i hs o a. (KnownNat i, Num a) => (a -> a) -> (a -> a) -> Network i hs o a -> V i a -> V o a
+runNetwork f g = go
+  where
+    go :: forall i' hs' o'. KnownNat i' => Network i' hs' o' a -> V i' a -> V o' a
+    go n v = case n of
+               OLayer l    -> g <$> runLayer l v
+               -- OLayer l    ->                        runLayer l v
+               ILayer l n' -> go n' (f <$> runLayer l v)
 {-# INLINE runNetwork #-}
 
-logistic :: Double -> Double
+-- logistic :: AD s (Forward Double) -> AD s (Forward Double)
+-- logistic :: Double -> Double
+logistic :: Floating a => a -> a
 logistic = recip . (+ 1) . exp . negate
 {-# INLINE logistic #-}
 
-logistic' :: Double -> Double
-logistic' = liftA2 (*) logistic (\x -> 1 - logistic x)
+logistic' :: Floating a => a -> a
+logistic' = diff logistic
 {-# INLINE logistic' #-}
 
-networkHeatmap :: (KnownNat i, Num a) => (a -> a) -> Network i hs o a -> V i a -> [[a]]
-networkHeatmap f n v = vToList v : case n of
-                                     OLayer l    -> [vToList (f <$> runLayer l v)]
-                                     ILayer l n' -> networkHeatmap f n' $ f <$> runLayer l v
+-- logistic' :: Double -> Double
+-- logistic' = liftA2 (*) logistic (\x -> 1 - logistic x)
+-- {-# INLINE logistic' #-}
+
+networkHeatmap :: (KnownNat i, Num a) => (a -> a) -> (a -> a) -> Network i hs o a -> V i a -> [[a]]
+networkHeatmap f g n v =
+    vToList v : case n of
+      OLayer l    -> [vToList (g <$> runLayer l v)]
+      ILayer l n' -> networkHeatmap f g n' $ f <$> runLayer l v
   where
     vToList = V.toList . toVector
 
-drawHeatmap :: KnownNat i => (Double -> Double) -> Network i hs o Double -> V i Double -> String
-drawHeatmap f n = unlines
-                . map (intercalate "\t")
-                . P.transpose
-                . map (padLists ' ')
-                . padLists ""
-                . map (padLists ' ' . map (printf "% .3f"))
-                . networkHeatmap f n
+drawHeatmap :: KnownNat i => (Double -> Double) -> (Double -> Double) -> Network i hs o Double -> V i Double -> String
+drawHeatmap f g n = unlines
+                  . map (intercalate "\t")
+                  . P.transpose
+                  . map (padLists ' ')
+                  . padLists ""
+                  . map (padLists ' ' . map (printf "% .3f"))
+                  . networkHeatmap f g n
   where
     padLists :: forall a. a -> [[a]] -> [[a]]
     padLists p xss = flip map xss $ \xs ->
@@ -302,13 +360,13 @@ networkStructure (ILayer l n') = (reflectDim (Proxy :: Proxy i), j : hs, o)
   where
     (j, hs, o) = networkStructure n'
 
-induceOutput :: forall i hs o a. (KnownNat i, KnownNat o, Floating a, Ord a) => a -> a -> (a, a) -> (a -> a) -> Network i hs o a -> V o a -> V i a -> V i a
-induceOutput nudge step (mn,mx) f n y x0@(V x0v) = V . fst $ foldl' g (x0v, errFrom x0) [0..V.length x0v - 1]
-  where
-    errFrom = qd y . runNetwork f n
-    g (x, e) i = let x'  = V.modify (\v -> VM.write v i . clamp . (+ nudge) =<< VM.read v i) x
-                     e'  = errFrom (V x')
-                     x'' = V.modify (\v -> VM.write v i . clamp . subtract (nudge*step/e') =<< VM.read v i) x
-                     e'' = errFrom (V x'')
-                 in  (x'', e'')
-    clamp = min mx . max mn
+-- induceOutput :: forall i hs o a. (KnownNat i, KnownNat o, Floating a, Ord a) => a -> a -> (a, a) -> (a -> a) -> Network i hs o a -> V o a -> V i a -> V i a
+-- induceOutput nudge step (mn,mx) f n y x0@(V x0v) = V . fst $ foldl' g (x0v, errFrom x0) [0..V.length x0v - 1]
+--   where
+--     errFrom = qd y . runNetwork f n
+--     g (x, e) i = let x'  = V.modify (\v -> VM.write v i . clamp . (+ nudge) =<< VM.read v i) x
+--                      e'  = errFrom (V x')
+--                      x'' = V.modify (\v -> VM.write v i . clamp . subtract (nudge*step/e') =<< VM.read v i) x
+--                      e'' = errFrom (V x'')
+--                  in  (x'', e'')
+--     clamp = min mx . max mn
