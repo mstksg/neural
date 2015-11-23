@@ -1,19 +1,19 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveFoldable #-}
-{-# LANGUAGE DeriveTraversable #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveFoldable             #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DeriveTraversable          #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE ViewPatterns               #-}
 
 module Data.Neural.FeedForward where
 
@@ -21,8 +21,10 @@ import Control.Applicative
 import Control.DeepSeq
 import Control.Monad
 import Control.Monad.ST
+import Data.Neural.Types
 import Control.Monad.Trans.State
 import Data.Bifunctor
+import Data.Neural.Utility
 import Data.Foldable
 import Data.List
 import Data.Monoid
@@ -40,90 +42,11 @@ import qualified Data.List           as P
 import qualified Data.Vector         as V
 import qualified Data.Vector.Mutable as VM
 
-data Node :: Nat -> * -> * where
-    Node :: { nodeBias :: !a, nodeWeights :: !(V i a) } -> Node i a
-  deriving (Show, Generic)
-
-newtype Layer :: Nat -> Nat -> * -> * where
-    Layer :: { layerNodes :: V o (Node i a) } -> Layer i o a
-  deriving (Show, Foldable, Traversable, Functor, Generic)
-
 data Network :: Nat -> [Nat] -> Nat -> * -> * where
     OLayer :: !(Layer i o a) -> Network i '[] o a
     ILayer :: KnownNat j => !(Layer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
 infixr 5 `ILayer`
-
-instance Functor (V i) => Functor (Node i) where
-    fmap f (Node b w) = Node (f b) (fmap f w)
-    {-# INLINE fmap #-}
-
-instance Applicative (V i) => Applicative (Node i) where
-    pure x = Node x (pure x)
-    {-# INLINE pure #-}
-    Node fb fw <*> Node xb xw = Node (fb xb) (fw <*> xw)
-    {-# INLINE (<*>) #-}
-
-instance (KnownNat i, Additive (V i)) => Additive (Node i) where
-    zero = Node 0 zero
-    {-# INLINE zero #-}
-    Node b1 w1 ^+^ Node b2 w2 = Node (b1 + b1) (w1 ^+^ w2)
-    {-# INLINE (^+^) #-}
-    Node b1 w1 ^-^ Node b2 w2 = Node (b1 - b1) (w1 ^-^ w2)
-    {-# INLINE (^-^) #-}
-    lerp a (Node b1 w1) (Node b2 w2) = Node (a * b1 + (1 - a) * b2) (lerp a w1 w2)
-    {-# INLINE lerp #-}
-    liftU2 f (Node b1 w1) (Node b2 w2) = Node (f b1 b2) (liftU2 f w1 w2)
-    {-# INLINE liftU2 #-}
-    liftI2 f (Node b1 w1) (Node b2 w2) = Node (f b1 b2) (liftI2 f w1 w2)
-    {-# INLINE liftI2 #-}
-
-instance Foldable (Node i) where
-    fold (Node b w) = b <> fold w
-    {-# INLINE fold #-}
-    foldMap f (Node b w) = f b <> foldMap f w
-    {-# INLINE foldMap #-}
-    foldr f z (Node b w) = b `f` foldr f z w
-    {-# INLINE foldr #-}
-    foldl f z (Node b w) = foldl f (f z b) w
-    {-# INLINE foldl #-}
-    foldl' f z (Node b w) = let z' = f z b in z' `seq` foldl f z' w
-    {-# INLINE foldl' #-}
-    -- foldr1 f (Node b w) = ???
-    foldl1 f (Node b w) = foldl f b w
-    {-# INLINE foldl1 #-}
-    toList (Node b w) = b : toList w
-    {-# INLINE toList #-}
-    null _ = False
-    {-# INLINE null #-}
-    length (Node _ w) = 1 + length w
-    {-# INLINE length #-}
-    elem x (Node b w) = (x == b) || elem x w
-    {-# INLINE elem #-}
-    maximum (Node b w) = b `max` maximum w
-    {-# INLINE maximum #-}
-    minimum (Node b w) = b `min` minimum w
-    {-# INLINE minimum #-}
-    sum (Node b w) = b + sum w
-    {-# INLINE sum #-}
-    product (Node b w) = b * product w
-    {-# INLINE product #-}
-
-instance Traversable (Node i) where
-    traverse f (Node b w) = Node <$> f b <*> traverse f w
-    {-# INLINE traverse #-}
-    sequenceA (Node b w) = Node <$> b <*> sequenceA w
-    {-# INLINE sequenceA #-}
-    mapM = traverse
-    {-# INLINE mapM #-}
-    sequence = sequenceA
-    {-# INLINE sequence #-}
-
-instance (KnownNat i, KnownNat o) => Applicative (Layer i o) where
-    pure = Layer . V . V.replicate (reflectDim (Proxy :: Proxy o)) . pure
-    {-# INLINE pure #-}
-    Layer f <*> Layer x = Layer (liftA2 (<*>) f x)
-    {-# INLINE (<*>) #-}
 
 instance Functor (Network i hs o) where
     fmap f n = case n of
@@ -143,20 +66,6 @@ instance (KnownNat i, KnownNat o, KnownNat j, Applicative (Network j hs o)) => A
     ILayer fi fr <*> ILayer xi xr = ILayer (fi <*> xi) (fr <*> xr)
     {-# INLINE (<*>) #-}
 
-instance (KnownNat i, Random a) => Random (V i a) where
-    random g = first V . flip runState g
-             $ V.replicateM (reflectDim (Proxy :: Proxy i)) (state random)
-    randomR (V rmn, V rmx) g = first V . flip runState g
-                             $ V.zipWithM (\x y -> state (randomR (x, y))) rmn rmx
-
-instance (KnownNat i, Random a) => Random (Node i a) where
-    random g =
-        let (b, g') = random g
-        in  first (Node b) (random g')
-    randomR (Node bmn wmn, Node bmx wmx) g =
-        let (b, g') = randomR (bmn, bmx) g
-        in  first (Node b) (randomR (wmn, wmx) g')
-
 instance (KnownNat i, KnownNat o, Random a) => Random (Network i '[] o a) where
     random = first OLayer . random
     randomR (OLayer rmn, OLayer rmx) = first OLayer . randomR (rmn, rmx)
@@ -168,9 +77,6 @@ instance (KnownNat i, KnownNat o, KnownNat j, Random a, Random (Network j hs o a
         let (l , g') = randomR (lmn, lmx) g
         in  first (l `ILayer`) (randomR (nmn, nmx) g')
 
-instance (KnownNat i, B.Binary a) => B.Binary (Node i a)
-instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Layer i o a)
-
 instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Network i '[] o a) where
     put (OLayer l) = B.put l
     get = OLayer <$> B.get
@@ -179,22 +85,24 @@ instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs
     put (ILayer l n') = B.put l *> B.put n'
     get = ILayer <$> B.get <*> B.get
 
-instance NFData a => NFData (Node i a)
-instance NFData a => NFData (Layer i o a)
 instance NFData a => NFData (Network i hs o a) where
     rnf (OLayer (force -> !l)) = ()
     rnf (ILayer (force -> !l) (force -> !n)) = ()
 
-deriving instance (KnownNat i, KnownNat o, Random a) => Random (Layer i o a)
 deriving instance Show a => Show (Network i hs o a)
 deriving instance Foldable (Network i hs o)
 deriving instance Traversable (Network i hs o)
 
-unzipV :: V i (a, b) -> (V i a, V i b)
-unzipV (V v) = (V x, V y)
+runNetwork :: forall i hs o a. (KnownNat i, Num a) => (a -> a) -> (a -> a) -> Network i hs o a -> V i a -> V o a
+runNetwork f g = go
   where
-    (x, y) = V.unzip v
-{-# INLINE unzipV #-}
+    go :: forall i' hs' o'. KnownNat i' => Network i' hs' o' a -> V i' a -> V o' a
+    go n v = case n of
+               OLayer l    -> g <$> runLayer l v
+               -- OLayer l    ->                        runLayer l v
+               ILayer l n' -> go n' (f <$> runLayer l v)
+{-# INLINE runNetwork #-}
+
 
 trainSample :: forall i o a hs. (KnownNat i, KnownNat o, Num a)
             => a -> (Forward a -> Forward a) -> (Forward a -> Forward a)
@@ -254,30 +162,6 @@ trainSample step f g x y n = snd $ go x n
     adjustWeights delta = liftA2 (\x -> subtract (step * delta * x))
     {-# INLINE adjustWeights #-}
 {-# INLINE trainSample #-}
-
-runLayer :: (KnownNat i, Num a) => Layer i o a -> V i a -> V o a
-runLayer (Layer l) v = l !* Node 1 v
-{-# INLINE runLayer #-}
-
-runNetwork :: forall i hs o a. (KnownNat i, Num a) => (a -> a) -> (a -> a) -> Network i hs o a -> V i a -> V o a
-runNetwork f g = go
-  where
-    go :: forall i' hs' o'. KnownNat i' => Network i' hs' o' a -> V i' a -> V o' a
-    go n v = case n of
-               OLayer l    -> g <$> runLayer l v
-               -- OLayer l    ->                        runLayer l v
-               ILayer l n' -> go n' (f <$> runLayer l v)
-{-# INLINE runNetwork #-}
-
--- logistic :: AD s (Forward Double) -> AD s (Forward Double)
--- logistic :: Double -> Double
-logistic :: Floating a => a -> a
-logistic = recip . (+ 1) . exp . negate
-{-# INLINE logistic #-}
-
-logistic' :: Floating a => a -> a
-logistic' = diff logistic
-{-# INLINE logistic' #-}
 
 -- logistic' :: Double -> Double
 -- logistic' = liftA2 (*) logistic (\x -> 1 - logistic x)
