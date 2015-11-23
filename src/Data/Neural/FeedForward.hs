@@ -15,25 +15,25 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Data.Neural where
+module Data.Neural.FeedForward where
 
 import Control.Applicative
+import Control.DeepSeq
 import Control.Monad
 import Control.Monad.ST
 import Control.Monad.Trans.State
 import Data.Bifunctor
-import Control.DeepSeq
-import Data.List
 import Data.Foldable
+import Data.List
 import Data.Monoid
 import Data.Proxy
 import GHC.Generics
 import GHC.TypeLits
 import Linear
 import Linear.V
+import Numeric.AD.Rank1.Forward
 import System.Random
 import Text.Printf
-import Numeric.AD.Rank1.Forward
 import qualified Control.Lens        as L
 import qualified Data.Binary         as B
 import qualified Data.List           as P
