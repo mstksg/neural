@@ -19,6 +19,7 @@ library
   exposed-modules:     Data.Neural.FeedForward
                        Data.Neural.Recurrent
                        Data.Neural.Utility
+                       Data.Neural.Types
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9

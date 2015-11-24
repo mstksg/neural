@@ -3,8 +3,12 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances           #-}
+{-# LANGUAGE ConstraintKinds           #-}
+{-# LANGUAGE TypeOperators           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -25,16 +29,52 @@ import GHC.TypeLits
 import Linear
 import Linear.V
 import System.Random
+import GHC.Exts (Constraint)
 import qualified Data.Binary     as B
 import qualified Data.Vector     as V
+
+-- | Types
 
 data Node :: Nat -> * -> * where
     Node :: { nodeBias :: !a, nodeWeights :: !(V i a) } -> Node i a
   deriving (Show, Generic)
 
-newtype Layer :: Nat -> Nat -> * -> * where
-    Layer :: { layerNodes :: V o (Node i a) } -> Layer i o a
+newtype FLayer :: Nat -> Nat -> * -> * where
+    FLayer :: { layerNodes :: V o (Node i a) } -> FLayer i o a
   deriving (Show, Foldable, Traversable, Functor, Generic)
+
+data Network :: (Nat -> Nat -> * -> *)
+             -> Nat -> [Nat] -> Nat -> *
+             -> * where
+    NetOL :: !(l i o a) -> Network l i '[] o a
+    NetIL :: KnownNat j => !(l i j a) -> !(Network l j hs o a) -> Network l i (j ': hs) o a
+
+infixr 5 `NetIL`
+
+-- | Classes
+
+class Layer (l :: Nat -> Nat -> * -> *) where
+    type LayerOut l (i :: Nat) (j :: Nat) (a :: *) :: *
+    type LayerRun l :: * -> Constraint
+    layerMap :: Layer l => (a -> b) -> l i o a -> l i o b
+    layerPure :: Layer l => a -> l i o a
+    layerAp :: Layer l => l i o (a -> b) -> l i o a -> l i o b
+    runLayer :: (Layer l, LayerRun l a, KnownNat i)
+             => l i o a -> V i a -> LayerOut l i o a
+    layerRandom :: (Random a, RandomGen g) => g -> l i o a
+    layerRandomR :: (Random a, RandomGen g) => (l i o a, l i o a) -> g -> l i o a
+
+-- | Instances
+--
+-- | * V i
+
+instance (KnownNat i, Random a) => Random (V i a) where
+    random g = first V . flip runState g
+             $ V.replicateM (reflectDim (Proxy :: Proxy i)) (state random)
+    randomR (V rmn, V rmx) g = first V . flip runState g
+                             $ V.zipWithM (\x y -> state (randomR (x, y))) rmn rmx
+
+-- | * Node
 
 instance Functor (V i) => Functor (Node i) where
     fmap f (Node b w) = Node (f b) (fmap f w)
@@ -101,18 +141,6 @@ instance Traversable (Node i) where
     sequence = sequenceA
     {-# INLINE sequence #-}
 
-instance (KnownNat i, KnownNat o) => Applicative (Layer i o) where
-    pure = Layer . V . V.replicate (reflectDim (Proxy :: Proxy o)) . pure
-    {-# INLINE pure #-}
-    Layer f <*> Layer x = Layer (liftA2 (<*>) f x)
-    {-# INLINE (<*>) #-}
-
-instance (KnownNat i, Random a) => Random (V i a) where
-    random g = first V . flip runState g
-             $ V.replicateM (reflectDim (Proxy :: Proxy i)) (state random)
-    randomR (V rmn, V rmx) g = first V . flip runState g
-                             $ V.zipWithM (\x y -> state (randomR (x, y))) rmn rmx
-
 instance (KnownNat i, Random a) => Random (Node i a) where
     random g =
         let (b, g') = random g
@@ -122,10 +150,74 @@ instance (KnownNat i, Random a) => Random (Node i a) where
         in  first (Node b) (randomR (wmn, wmx) g')
 
 instance (KnownNat i, B.Binary a) => B.Binary (Node i a)
-instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Layer i o a)
 
 instance NFData a => NFData (Node i a)
-instance NFData a => NFData (Layer i o a)
 
-deriving instance (KnownNat i, KnownNat o, Random a) => Random (Layer i o a)
+-- | * FLayer
 
+instance NFData a => NFData (FLayer i o a)
+instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (FLayer i o a)
+
+instance (KnownNat i, KnownNat o) => Applicative (FLayer i o) where
+    pure = FLayer . V . V.replicate (reflectDim (Proxy :: Proxy o)) . pure
+    {-# INLINE pure #-}
+    FLayer f <*> FLayer x = FLayer (liftA2 (<*>) f x)
+    {-# INLINE (<*>) #-}
+
+
+deriving instance (KnownNat i, KnownNat o, Random a) => Random (FLayer i o a)
+
+instance Layer FLayer where
+    type LayerOut FLayer i o a = V o a
+    type LayerRun FLayer = Num
+    layerMap = fmap
+    {-# INLINE layerMap #-}
+    runLayer (FLayer l) v = l !* Node 1 v
+    {-# INLINE runLayer #-}
+
+-- | * Network
+
+instance Layer l => Functor (Network l i hs o) where
+    fmap f n = case n of
+                 NetOL l    -> NetOL (layerMap f l)
+                 NetIL l n' -> layerMap f l `NetIL` fmap f n'
+    {-# INLINE fmap #-}
+
+instance (Layer l, KnownNat i, KnownNat o) => Applicative (Network l i '[] o) where
+    pure = NetOL . layerPure
+    {-# INLINE pure #-}
+    NetOL f <*> NetOL x = NetOL (layerAp f x)
+    {-# INLINE (<*>) #-}
+
+instance (Layer l, KnownNat i, KnownNat o, KnownNat j, Applicative (Network l j hs o)) => Applicative (Network l i (j ': hs) o) where
+    pure x = layerPure x `NetIL` pure x
+    {-# INLINE pure #-}
+    NetIL fi fr <*> NetIL xi xr = NetIL (layerAp fi xi) (fr <*> xr)
+    {-# INLINE (<*>) #-}
+
+instance (Layer l, KnownNat i, KnownNat o, Random a) => Random (Network l i '[] o a) where
+    random = first NetOL . random
+    randomR (NetOL rmn, NetOL rmx) = first NetOL . randomR (rmn, rmx)
+
+-- instance (KnownNat i, KnownNat o, KnownNat j, Random a, Random (Network j hs o a)) => Random (Network i (j ': hs) o a) where
+--     random g = let (l, g') = random g
+--                in  first (l `ILayer`) (random g')
+--     randomR (ILayer lmn nmn, ILayer lmx nmx) g =
+--         let (l , g') = randomR (lmn, lmx) g
+--         in  first (l `ILayer`) (randomR (nmn, nmx) g')
+
+-- instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Network i '[] o a) where
+--     put (OLayer l) = B.put l
+--     get = OLayer <$> B.get
+
+-- instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
+--     put (ILayer l n') = B.put l *> B.put n'
+--     get = ILayer <$> B.get <*> B.get
+
+-- instance NFData a => NFData (Network i hs o a) where
+--     rnf (OLayer (force -> !l)) = ()
+--     rnf (ILayer (force -> !l) (force -> !n)) = ()
+
+-- deriving instance Show a => Show (Network i hs o a)
+-- deriving instance Foldable (Network i hs o)
+-- deriving instance Traversable (Network i hs o)
