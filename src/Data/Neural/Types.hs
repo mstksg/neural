@@ -1,18 +1,18 @@
+{-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances           #-}
-{-# LANGUAGE ConstraintKinds           #-}
-{-# LANGUAGE TypeOperators           #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
 module Data.Neural.Types where
@@ -51,18 +51,12 @@ data Network :: (Nat -> Nat -> * -> *)
 
 infixr 5 `NetIL`
 
--- | Classes
+-- | Class
 
-class Layer (l :: Nat -> Nat -> * -> *) where
-    type LayerOut l (i :: Nat) (j :: Nat) (a :: *) :: *
-    type LayerRun l :: * -> Constraint
-    layerMap :: Layer l => (a -> b) -> l i o a -> l i o b
-    layerPure :: Layer l => a -> l i o a
-    layerAp :: Layer l => l i o (a -> b) -> l i o a -> l i o b
-    runLayer :: (Layer l, LayerRun l a, KnownNat i)
-             => l i o a -> V i a -> LayerOut l i o a
-    layerRandom :: (Random a, RandomGen g) => g -> l i o a
-    layerRandomR :: (Random a, RandomGen g) => (l i o a, l i o a) -> g -> l i o a
+-- class Layer (l :: Nat -> Nat -> * -> *) where
+--     type LayerOut l (o :: Nat) a :: *
+--     type RunConstraint l :: * -> Constraint
+--     runLayer :: (KnownNat i, RunConstraint l a) => l i o a -> V i a -> LayerOut l o a
 
 -- | Instances
 --
@@ -164,60 +158,56 @@ instance (KnownNat i, KnownNat o) => Applicative (FLayer i o) where
     FLayer f <*> FLayer x = FLayer (liftA2 (<*>) f x)
     {-# INLINE (<*>) #-}
 
-
 deriving instance (KnownNat i, KnownNat o, Random a) => Random (FLayer i o a)
 
-instance Layer FLayer where
-    type LayerOut FLayer i o a = V o a
-    type LayerRun FLayer = Num
-    layerMap = fmap
-    {-# INLINE layerMap #-}
-    runLayer (FLayer l) v = l !* Node 1 v
-    {-# INLINE runLayer #-}
+-- runLayer :: (KnownNat i, Num a) => Layer i o a -> V i a -> V o a
+-- runLayer (Layer l) v = l !* Node 1 v
+-- {-# INLINE runLayer #-}
+
 
 -- | * Network
 
-instance Layer l => Functor (Network l i hs o) where
-    fmap f n = case n of
-                 NetOL l    -> NetOL (layerMap f l)
-                 NetIL l n' -> layerMap f l `NetIL` fmap f n'
-    {-# INLINE fmap #-}
+-- fmapNetwork :: forall a b l i hs o.
+--                (forall a' b' i' o'. (a' -> b') -> l i' o' a' -> l i' o' b')
+--             -> (a -> b)
+--             -> Network l i hs o a
+--             -> Network l i hs o b
+-- fmapNetwork f g = go
+--   where
+--     go :: forall i' hs' o'. Network l i' hs' o' a -> Network l i' hs' o' b
+--     go n = case n of
+--              NetOL l    -> NetOL (f g l)
+--              NetIL l n' -> NetIL (f g l) (go n')
 
-instance (Layer l, KnownNat i, KnownNat o) => Applicative (Network l i '[] o) where
-    pure = NetOL . layerPure
-    {-# INLINE pure #-}
-    NetOL f <*> NetOL x = NetOL (layerAp f x)
-    {-# INLINE (<*>) #-}
+-- pureNetworkO :: forall a l i o.
+--                 (forall a'. a' -> l i o a')
+--              -> a -> Network l i '[] o a
+-- pureNetworkO p = NetOL . p
 
-instance (Layer l, KnownNat i, KnownNat o, KnownNat j, Applicative (Network l j hs o)) => Applicative (Network l i (j ': hs) o) where
-    pure x = layerPure x `NetIL` pure x
-    {-# INLINE pure #-}
-    NetIL fi fr <*> NetIL xi xr = NetIL (layerAp fi xi) (fr <*> xr)
-    {-# INLINE (<*>) #-}
+-- apNetworkO :: forall a b l i o.
+--               (forall a' b'. l i o (a' -> b') -> l i o a' -> l i o b')
+--            -> Network l i '[] o (a -> b)
+--            -> Network l i '[] o a
+--            -> Network l i '[] o b
+-- apNetworkO p (NetOL f) (NetOL x) = NetOL (p f x)
 
-instance (Layer l, KnownNat i, KnownNat o, Random a) => Random (Network l i '[] o a) where
-    random = first NetOL . random
-    randomR (NetOL rmn, NetOL rmx) = first NetOL . randomR (rmn, rmx)
+-- pureNetworkI :: forall a l i h hs o. KnownNat h
+--              => (forall a'. a' -> l i h a')
+--              -> (forall a'. a' -> Network l h hs o a')
+--              -> a
+--              -> Network l i (h ': hs) o a
+-- pureNetworkI p pN x = p x `NetIL` pN x
 
--- instance (KnownNat i, KnownNat o, KnownNat j, Random a, Random (Network j hs o a)) => Random (Network i (j ': hs) o a) where
---     random g = let (l, g') = random g
---                in  first (l `ILayer`) (random g')
---     randomR (ILayer lmn nmn, ILayer lmx nmx) g =
---         let (l , g') = randomR (lmn, lmx) g
---         in  first (l `ILayer`) (randomR (nmn, nmx) g')
+-- apNetworkI :: forall a b l i h hs o.
+--               (forall a' b'. l i h (a' -> b') -> l i h a' -> l i h b')
+--            -> (forall a' b'. Network l h hs o (a' -> b') -> Network l h hs o a' -> Network l h hs o b')
+--            -> Network l i (h ': hs) o (a -> b)
+--            -> Network l i (h ': hs) o a
+--            -> Network l i (h ': hs) o b
+-- apNetworkI a aN (NetIL l n) (NetIL l' n') = NetIL (a l l') (aN n n')
 
--- instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Network i '[] o a) where
---     put (OLayer l) = B.put l
---     get = OLayer <$> B.get
+-- instance (KnownNat i, KnownNat o, Random a) => Random (Network i '[] o a) where
+--     random = first OLayer . random
+--     randomR (OLayer rmn, OLayer rmx) = first OLayer . randomR (rmn, rmx)
 
--- instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
---     put (ILayer l n') = B.put l *> B.put n'
---     get = ILayer <$> B.get <*> B.get
 
--- instance NFData a => NFData (Network i hs o a) where
---     rnf (OLayer (force -> !l)) = ()
---     rnf (ILayer (force -> !l) (force -> !n)) = ()
-
--- deriving instance Show a => Show (Network i hs o a)
--- deriving instance Foldable (Network i hs o)
--- deriving instance Traversable (Network i hs o)
