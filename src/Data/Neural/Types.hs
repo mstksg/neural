@@ -51,6 +51,9 @@ data Network :: (Nat -> Nat -> * -> *)
 
 infixr 5 `NetIL`
 
+data NeuralActs :: * -> * where
+  NA :: { naInner :: a -> a, naOuter :: a -> a } -> NeuralActs a
+
 -- | Class
 
 -- class Layer (l :: Nat -> Nat -> * -> *) where

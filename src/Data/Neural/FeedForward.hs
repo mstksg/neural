@@ -109,7 +109,7 @@ trainSample step f g x y n = snd $ go x n
           in  (deltaws, l' `NetIL` n'')
       where
         xb = Node 1 x
-    {-# INLINE go #-}
+    -- {-# INLINE go #-}
     -- per neuron/node traversal
     -- every neuron has a delta
     adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
@@ -204,8 +204,8 @@ randomNetworkIO :: (Random (Network i hs o a), Num a) => IO (Network i hs o a)
 randomNetworkIO = fmap (subtract 1 . (*2)) <$> randomIO
 
 networkStructure :: forall i hs o a. (KnownNat i, KnownNat o) => Network i hs o a -> (Int, [Int], Int)
-networkStructure (NetOL l) = (reflectDim (Proxy :: Proxy i), [], reflectDim (Proxy :: Proxy o))
-networkStructure (NetIL l n') = (reflectDim (Proxy :: Proxy i), j : hs, o)
+networkStructure (NetOL _) = (reflectDim (Proxy :: Proxy i), [], reflectDim (Proxy :: Proxy o))
+networkStructure (NetIL _ n') = (reflectDim (Proxy :: Proxy i), j : hs, o)
   where
     (j, hs, o) = networkStructure n'
 
@@ -260,8 +260,8 @@ instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs
     get = NetIL <$> B.get <*> B.get
 
 instance NFData a => NFData (Network i hs o a) where
-    rnf (NetOL (force -> !l)) = ()
-    rnf (NetIL (force -> !l) (force -> !n)) = ()
+    rnf (NetOL (force -> !_)) = ()
+    rnf (NetIL (force -> !_) (force -> !_)) = ()
 
 deriving instance Show a => Show (Network i hs o a)
 deriving instance Foldable (Network i hs o)

@@ -29,6 +29,13 @@ logistic :: Floating a => a -> a
 logistic = recip . (+ 1) . exp . negate
 {-# INLINE logistic #-}
 
+naLogId :: Floating a => NeuralActs a
+naLogId = NA logistic id
+
+naLogLog :: Floating a => NeuralActs a
+naLogLog = NA logistic logistic
+
+
 runFLayer :: (KnownNat i, Num a) => FLayer i o a -> V i a -> V o a
 runFLayer (FLayer l) v = l !* Node 1 v
 {-# INLINE runFLayer #-}
@@ -46,10 +53,18 @@ knWit _ = Wit
 witVal :: forall n. Wit (KnownNat n) -> Integer
 witVal Wit = natVal (Proxy :: Proxy n)
 
+infixl 6 %+
 (%+) :: forall n m. Wit (KnownNat n) -> Wit (KnownNat m) -> Wit (KnownNat (n + m))
 x %+ y = case someNatVal (witVal x + witVal y) of
            Just (SomeNat z) -> unsafeCoerce (knWit z)
            _                -> error "what"
+
+infixl 7 %*
+(%*) :: forall n m. Wit (KnownNat n) -> Wit (KnownNat m) -> Wit (KnownNat (n * m))
+x %* y = case someNatVal (witVal x * witVal y) of
+           Just (SomeNat z) -> unsafeCoerce (knWit z)
+           _                -> error "what"
+
 
 withWit :: Wit c -> (c => r) -> r
 withWit w x = case w of Wit -> x
