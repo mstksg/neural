@@ -19,50 +19,28 @@ module Data.Neural.FeedForward where
 
 import Control.Applicative
 import Control.DeepSeq
-import Control.Monad
-import Control.Monad.ST
-import Control.Monad.Trans.State
 import Data.Bifunctor
-import Data.Foldable
 import Data.List
-import Data.Monoid
-import Data.Neural.Types hiding      (Network)
+import Data.Neural.Types
 import Data.Neural.Utility
 import Data.Proxy
-import GHC.Generics
 import GHC.TypeLits
 import Linear
 import Linear.V
 import Numeric.AD.Rank1.Forward
 import System.Random
 import Text.Printf
-import qualified Control.Lens        as L
-import qualified Data.Binary         as B
-import qualified Data.List           as P
-import qualified Data.Neural.Types   as N
-import qualified Data.Vector         as V
-import qualified Data.Vector.Mutable as VM
+import qualified Data.Binary    as B
+import qualified Data.List      as P
+import qualified Data.Vector    as V
 
-type Network = N.Network FLayer
+data Network :: Nat -> [Nat] -> Nat -> *
+             -> * where
+    NetOL :: !(FLayer i o a) -> Network i '[] o a
+    NetIL :: KnownNat j => !(FLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
--- instance Functor (Network i hs o) where
---     fmap f (FFNet n) = FFNet $ fmapNetwork fmap f n
+infixr 5 `NetIL`
 
--- instance (KnownNat i, KnownNat o) => Applicative (Network i '[] o) where
---     pure = FFNet . pureNetworkO pure
---     FFNet f <*> FFNet x = FFNet (apNetworkO (<*>) f x)
-
--- instance (KnownNat i, KnownNat o, KnownNat j, Applicative (Network j hs o)) => Applicative (Network i (j ': hs) o) where
---     pure = FFNet . pureNetworkI pure (unFFNet . pure)
---     FFNet f <*> FFNet x = FFNet (apNetworkI (<*>) (\f' x' -> unFFNet $ FFNet f' <*> FFNet x') f x)
-
--- data Network :: Nat -> [Nat] -> Nat -> * -> * where
---     NetOL :: !(FLayer i o a) -> Network i '[] o a
---     NetIL :: KnownNat j => !(FLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
-
--- infixr 5 `NetIL`
-
--- deriving instance Functor (Network i hs o)
 
 runNetwork :: forall i hs o a. (KnownNat i, Num a) => (a -> a) -> (a -> a) -> Network i hs o a -> V i a -> V o a
 runNetwork f g = go
@@ -78,7 +56,7 @@ trainSample :: forall i o a hs. (KnownNat i, KnownNat o, Num a)
             -> V i a -> V o a
             -> Network i hs o a
             -> Network i hs o a
-trainSample step f g x y n = snd $ go x n
+trainSample step f g x0 y n0 = snd $ go x0 n0
   where
     -- x: input
     -- y: target
@@ -113,10 +91,10 @@ trainSample step f g x y n = snd $ go x n
     -- per neuron/node traversal
     -- every neuron has a delta
     adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
-    adjustOutput xb node y d = (delta, adjustWeights delta xb node)
+    adjustOutput xb node y' d = (delta, adjustWeights delta xb node)
       where
         delta = let (o, o') = diff' g d
-                in  (o - y) * o'
+                in  (o - y') * o'
         -- delta = (f d - y) * f' d
     {-# INLINE adjustOutput #-}
         -- delta = d - y
@@ -128,7 +106,7 @@ trainSample step f g x y n = snd $ go x n
         -- delta = deltao
     -- per weight traversal
     adjustWeights :: KnownNat j => a -> Node j a -> Node j a -> Node j a
-    adjustWeights delta = liftA2 (\x -> subtract (step * delta * x))
+    adjustWeights delta = liftA2 (\w -> subtract (step * delta * w))
     {-# INLINE adjustWeights #-}
 {-# INLINE trainSample #-}
 
@@ -172,8 +150,8 @@ drawNetwork = unlines
   where
     addDot :: [[[String]]] -> [[[String]]]
     addDot = concatMap $ \xs -> [xs, replicate (length xs) ["o"]]
-    bracketize :: String -> String
-    bracketize str = '[' : str ++ "]"
+    -- bracketize :: String -> String
+    -- bracketize str = '[' : str ++ "]"
     padLists :: forall a. a -> [[a]] -> [[a]]
     padLists p xss = flip map xss $ \xs ->
                        let d = (maxlen - length xs) `div` 2
@@ -188,9 +166,9 @@ drawNetwork = unlines
         maxlen = maximum (concatMap (map length) xsss)
     nodeToList :: forall j a. Node j a -> [a]
     nodeToList (Node b (V w)) = b : V.toList w
-    layerToList :: forall i o a. FLayer i o a -> [[a]]
+    layerToList :: forall i' o' a. FLayer i' o' a -> [[a]]
     layerToList (FLayer (V l)) = nodeToList <$> V.toList l
-    networkToList :: forall i hs o a. Network i hs o a -> [[[a]]]
+    networkToList :: forall i' hs' o' a. Network i' hs' o' a -> [[[a]]]
     networkToList n' = case n' of
                          NetOL l     -> [layerToList l]
                          NetIL l n'' -> layerToList l : networkToList n''

@@ -29,7 +29,6 @@ import GHC.TypeLits
 import Linear
 import Linear.V
 import System.Random
-import GHC.Exts (Constraint)
 import qualified Data.Binary     as B
 import qualified Data.Vector     as V
 
@@ -42,14 +41,6 @@ data Node :: Nat -> * -> * where
 newtype FLayer :: Nat -> Nat -> * -> * where
     FLayer :: { layerNodes :: V o (Node i a) } -> FLayer i o a
   deriving (Show, Foldable, Traversable, Functor, Generic)
-
-data Network :: (Nat -> Nat -> * -> *)
-             -> Nat -> [Nat] -> Nat -> *
-             -> * where
-    NetOL :: !(l i o a) -> Network l i '[] o a
-    NetIL :: KnownNat j => !(l i j a) -> !(Network l j hs o a) -> Network l i (j ': hs) o a
-
-infixr 5 `NetIL`
 
 data NeuralActs :: * -> * where
   NA :: { naInner :: a -> a, naOuter :: a -> a } -> NeuralActs a
@@ -86,9 +77,9 @@ instance Applicative (V i) => Applicative (Node i) where
 instance (KnownNat i, Additive (V i)) => Additive (Node i) where
     zero = Node 0 zero
     {-# INLINE zero #-}
-    Node b1 w1 ^+^ Node b2 w2 = Node (b1 + b1) (w1 ^+^ w2)
+    Node b1 w1 ^+^ Node b2 w2 = Node (b1 + b2) (w1 ^+^ w2)
     {-# INLINE (^+^) #-}
-    Node b1 w1 ^-^ Node b2 w2 = Node (b1 - b1) (w1 ^-^ w2)
+    Node b1 w1 ^-^ Node b2 w2 = Node (b1 - b2) (w1 ^-^ w2)
     {-# INLINE (^-^) #-}
     lerp a (Node b1 w1) (Node b2 w2) = Node (a * b1 + (1 - a) * b2) (lerp a w1 w2)
     {-# INLINE lerp #-}
@@ -156,7 +147,7 @@ instance NFData a => NFData (FLayer i o a)
 instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (FLayer i o a)
 
 instance (KnownNat i, KnownNat o) => Applicative (FLayer i o) where
-    pure = FLayer . V . V.replicate (reflectDim (Proxy :: Proxy o)) . pure
+    pure = FLayer . pure . pure
     {-# INLINE pure #-}
     FLayer f <*> FLayer x = FLayer (liftA2 (<*>) f x)
     {-# INLINE (<*>) #-}

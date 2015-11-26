@@ -23,7 +23,7 @@ import Control.DeepSeq
 import Control.Lens
 import Control.Monad.Random
 import Control.Monad.State
-import Data.Neural.Types hiding    (Network)
+import Data.Neural.Types
 import Data.Neural.Utility
 import Data.Proxy
 import GHC.Generics
@@ -32,68 +32,82 @@ import Linear
 import Linear.V
 import Type.Class.Witness
 import qualified Data.Binary       as B
-import qualified Data.Neural.Types as N
 import qualified Data.Vector       as V
 
+data RNode :: Nat -> Nat -> * -> * where
+    RNode :: { rNodeBias :: !a
+             , rNodeIWeights :: !(V i a)
+             , rNodeSWeights :: !(V s a)
+             } -> RNode i s a
+  deriving (Show, Generic, Functor, Foldable, Traversable)
+
 data RLayer :: Nat -> Nat -> * -> * where
-    RLayer :: { rLayerWeights :: !(FLayer (i + o) o a)
-              , rLayerState   :: !(V o a)
+    RLayer :: { rLayerNodes :: !(V o (RNode i o a))
+              , rLayerState :: !(V o a)
               } -> RLayer i o a
   deriving (Show, Functor, Foldable, Traversable, Generic)
 
-instance NFData a => NFData (RLayer i o a)
+data Network :: Nat -> [Nat] -> Nat -> *
+             -> * where
+    NetOL :: !(FLayer i o a) -> Network i '[] o a
+    NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
-type Network = N.Network RLayer
+infixr 5 `NetIL`
 
-instance (KnownNat i, KnownNat o) => Applicative (RLayer i o) where
-    pure x =
-      case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-        Wit -> RLayer (pure x) (pure x)
+instance (Applicative (V i), Applicative (V s)) => Applicative (RNode i s) where
+    pure x = RNode x (pure x) (pure x)
     {-# INLINE pure #-}
-    RLayer l s <*> RLayer l' s' =
-      case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-        Wit -> RLayer (l <*> l') (s <*> s')
+    RNode fb fi fs <*> RNode xb xi xs = RNode (fb xb) (fi <*> xi) (fs <*> xs)
     {-# INLINE (<*>) #-}
 
-instance (B.Binary a, KnownNat i, KnownNat o) => B.Binary (RLayer i o a) where
-    put (RLayer l s) =
-      case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-        Wit -> B.put l *> B.put s
-    get =
-      case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-        Wit -> RLayer <$> B.get <*> B.get
+instance (KnownNat i, Additive (V i), Additive (V s)) => Additive (RNode i s) where
+    zero = RNode 0 zero zero
+    {-# INLINE zero #-}
+    RNode b1 i1 s1 ^+^ RNode b2 i2 s2 = RNode (b1 + b2) (i1 ^+^ i2) (s1 ^+^ s2)
+    {-# INLINE (^+^) #-}
+    RNode b1 i1 s1 ^-^ RNode b2 i2 s2 = RNode (b1 - b2) (i1 ^-^ i2) (s1 ^-^ s2)
+    {-# INLINE (^-^) #-}
+    lerp a (RNode b1 i1 s1) (RNode b2 i2 s2) = RNode (a * b1 + (1 - a) * b2) (lerp a i1 i2) (lerp a s1 s2)
+    {-# INLINE lerp #-}
+    liftU2 f (RNode b1 i1 s1) (RNode b2 i2 s2) = RNode (f b1 b2) (liftU2 f i1 i2) (liftU2 f s1 s2)
+    {-# INLINE liftU2 #-}
+    liftI2 f (RNode b1 i1 s1) (RNode b2 i2 s2) = RNode (f b1 b2) (liftI2 f i1 i2) (liftI2 f s1 s2)
+    {-# INLINE liftI2 #-}
+
+instance (KnownNat i, KnownNat s, Random a) => Random (RNode i s a) where
+    random = runRand $
+        RNode <$> getRandom <*> getRandom <*> getRandom
+    randomR (RNode bmn imn smn, RNode bmx imx smx) = runRand $
+        RNode <$> getRandomR (bmn, bmx)
+              <*> getRandomR (imn, imx)
+              <*> getRandomR (smn, smx)
+
+instance NFData a => NFData (RNode i s a)
+instance (KnownNat i, KnownNat s, B.Binary a) => B.Binary (RNode i s a)
+
+instance NFData a => NFData (RLayer i o a)
+
+instance (KnownNat i, KnownNat o) => Applicative (RLayer i o) where
+    pure x = RLayer (pure (pure x)) (pure x)
+    {-# INLINE pure #-}
+    RLayer l s <*> RLayer l' s' = RLayer (liftA2 (<*>) l l') (s <*> s')
+    {-# INLINE (<*>) #-}
+
+instance (B.Binary a, KnownNat i, KnownNat o) => B.Binary (RLayer i o a)
 
 instance (KnownNat i, KnownNat o, Random a) => Random (RLayer i o a) where
-    random g =
-      case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-        Wit -> flip runState g $
-                 RLayer <$> state random <*> state random
-    randomR (RLayer l s, RLayer l' s') g =
-      case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-        Wit -> flip runState g $
-                 RLayer <$> state (randomR (l, l'))
-                        <*> state (randomR (s, s'))
+    random = runRand $ RLayer <$> getRandom <*> getRandom
+    randomR (RLayer lmn smn, RLayer lmx smx) = runRand $
+        RLayer <$> getRandomR (lmn, lmx) <*> getRandomR (smn, smx)
 
 runRLayer :: forall i o a. (KnownNat i, KnownNat o, Num a)
           => (a -> a)
           -> RLayer i o a
           -> V i a
           -> (V o a, RLayer i o a)
-runRLayer f l v =
-    case natAddition (Proxy :: Proxy i) (Proxy :: Proxy o) of
-      Wit -> go
+runRLayer f l v = (v', l { rLayerState = f <$> v' })
   where
-    go :: KnownNat (i + o) => (V o a, RLayer i o a)
-    go = (v', l { rLayerState = newState })
-      where
-        -- not verified by compiler.  beware!
-        -- also, is concatting to slow?
-        vInp :: V (i + o) a
-        vInp = V (toVector v V.++ toVector (rLayerState l))
-        v' :: V o a
-        v' = runFLayer (rLayerWeights l) vInp
-        newState :: V o a
-        newState = f <$> v'
+    v'       = rLayerNodes l !* RNode 1 v (rLayerState l)
 {-# INLINE runRLayer #-}
 
 runRLayerS :: forall i o a m. (KnownNat i, KnownNat o, Num a, MonadState (RLayer i o a) m)
@@ -115,7 +129,7 @@ runNetwork (NA f g) = go
        -> V i' a
        -> (V o' a, Network i' hs' o' a)
     go n v = case n of
-               NetOL l    -> (fmap g *** NetOL) (runRLayer f l v)
+               NetOL l    -> (fmap g (runFLayer l v), n)
                NetIL l nI -> let (v' , l')  = runRLayer f l v
                                  (v'', nI') = go nI (f <$> v')
                              in  (v'', NetIL l' nI')
@@ -188,18 +202,18 @@ resetNetState n = runIdentity (tNetStates (\_ -> Identity (pure 0)) n)
 -- | Some traversals
 
 tNetRLayers :: (Applicative f, KnownNat o)
-            => (forall i o. KnownNat o => RLayer i o a -> f (RLayer i o b))
+            => (forall i' o'. KnownNat o' => RLayer i' o' a -> f (RLayer i' o' a))
             -> Network i hs o a
-            -> f (Network i hs o b)
+            -> f (Network i hs o a)
 tNetRLayers f n = case n of
-                    NetOL l    -> NetOL <$> f l
+                    NetOL _    -> pure n
                     NetIL l n' -> NetIL <$> f l <*> tNetRLayers f n'
 {-# INLINE tNetRLayers #-}
 
-tRLayerWeights :: Lens (RLayer i o a) (RLayer i' o a)
-                       (FLayer (i + o) o a) (FLayer (i' + o) o a)
-tRLayerWeights f l = (\w -> l { rLayerWeights = w }) <$> f (rLayerWeights l)
-{-# INLINE tRLayerWeights #-}
+tRLayerNodes :: Lens (RLayer i o a)      (RLayer i' o a)
+                     (V o (RNode i o a)) (V o (RNode i' o a))
+tRLayerNodes f l = (\w -> l { rLayerNodes = w }) <$> f (rLayerNodes l)
+{-# INLINE tRLayerNodes #-}
 
 tRLayerState :: Lens' (RLayer i o a) (V o a)
 tRLayerState f l = (\s -> l { rLayerState = s }) <$> f (rLayerState l)
