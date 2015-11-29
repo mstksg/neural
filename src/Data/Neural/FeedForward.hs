@@ -77,12 +77,20 @@ trainSample step f g x0 y n0 = snd $ go x0 n0
               l'             :: FLayer j o a
               l'             = FLayer ln'
           in  (deltaws, NetOL l')
-        NetIL l@(FLayer ln) n' ->
-          let d                    = runFLayer l x
+        NetIL l@(FLayer ln :: FLayer j k a) (n' :: Network k ks o a) ->
+          let d :: V k a
+              d                    = runFLayer l x
+              o :: V k a
               o                    = fst . diff' f <$> d
+              deltaos :: V k a
+              n'' :: Network k ks o a
               (deltaos, n'')       = go o n'
+              delta :: V k a
+              ln' :: V k (Node j a)
               (delta, ln')         = unzipV $ liftA3 (adjustHidden xb) ln deltaos d
+              deltaws :: V j a
               deltaws              = delta *! (nodeWeights <$> ln')
+              l' :: FLayer j k a
               l'                   = FLayer ln'
           in  (deltaws, l' `NetIL` n'')
       where

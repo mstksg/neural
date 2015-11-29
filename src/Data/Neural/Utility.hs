@@ -81,3 +81,35 @@ natAddition x y = knWit x %+ knWit y
 -- logistic' = diff logistic
 -- {-# INLINE logistic' #-}
 
+iterateN :: forall a. (a -> a) -> a -> Int -> a
+iterateN f = go
+  where
+    go :: a -> Int -> a
+    go x n = if n <= 0
+               then x
+               else let x' = f x
+                    in x' `seq` go x' (n - 1)
+{-# INLINE iterateN #-}
+
+class Nudges w where
+    nudges :: (a -> a) -> w a -> w (w a)
+
+instance Dim n => Nudges (V n) where
+    nudges f v = V . V.generate (dim v) $ \i -> accumV (\x _ -> f x) v [(i, ())]
+
+instance Dim n => Nudges (Node n) where
+    nudges f (Node b w) = Node (Node (f b) w) (Node b <$> nudges f w)
+
+instance (Dim i, Dim o) => Nudges (FLayer i o) where
+    -- could this be written using the nudges from the other things?
+    nudges f (FLayer l) = FLayer . (fmap.fmap) FLayer
+                        . V . V.generate (dim l) $ \i ->
+                            Node (accumV (\(Node b w) _ -> Node (f b) w) l [(i,())])
+                          . V . V.generate dimI $ \j ->
+                                  (accumV (\(Node b w) _ -> Node b (accumV (\x _ -> f x) w [(j,())])) l [(i,())])
+      where
+        dimI = reflectDim (Proxy :: Proxy i)
+
+accumV :: (a -> b -> a) -> V n a -> [(Int, b)] -> V n a
+accumV f (V v) xs = V (V.accum f v xs)
+

@@ -21,25 +21,25 @@ import Control.Applicative
 import Control.Arrow
 import Control.DeepSeq
 import Control.Lens
+import Data.Proxy
 import Control.Monad.Random
-import Control.Monad.State
+import qualified Data.Vector as V
+import Control.Monad.State.Strict
+import Debug.Trace
 import Data.Neural.Types
 import Data.Neural.Utility
-import Data.Proxy
 import GHC.Generics
 import GHC.TypeLits
 import Linear
 import Linear.V
-import Type.Class.Witness
-import qualified Data.Binary       as B
-import qualified Data.Vector       as V
+import qualified Data.Binary    as B
 
 data RNode :: Nat -> Nat -> * -> * where
     RNode :: { rNodeBias :: !a
              , rNodeIWeights :: !(V i a)
              , rNodeSWeights :: !(V s a)
              } -> RNode i s a
-  deriving (Show, Generic, Functor, Foldable, Traversable)
+  deriving (Show, Generic, Foldable, Traversable)
 
 data RLayer :: Nat -> Nat -> * -> * where
     RLayer :: { rLayerNodes :: !(V o (RNode i o a))
@@ -53,6 +53,10 @@ data Network :: Nat -> [Nat] -> Nat -> *
     NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
 infixr 5 `NetIL`
+
+instance Functor (RNode i s) where
+    fmap f (RNode b i s) = RNode (f b) (fmap f i) (fmap f s)
+    {-# INLINE fmap #-}
 
 instance (Applicative (V i), Applicative (V s)) => Applicative (RNode i s) where
     pure x = RNode x (pure x) (pure x)
@@ -165,26 +169,28 @@ runNetStream_ na = go
 
 runNetFeedback :: forall i hs a. (Num a, KnownNat i)
                => NeuralActs a
+                -> (V i a -> V i a)
                -> Network i hs i a
                -> V i a
                -> [(V i a, Network i hs i a)]
-runNetFeedback na = go
+runNetFeedback na nxt n0 i0 = (i0, n0) : go n0 i0
   where
     go :: Network i hs i a -> V i a -> [(V i a, Network i hs i a)]
     go n v = let res@(v', n') = runNetwork na n v
-             in  res : go n' v'
+             in  res : go n' (nxt v')
 {-# INLINE runNetFeedback #-}
 
 runNetFeedback_ :: forall i hs a. (Num a, KnownNat i)
                 => NeuralActs a
+                -> (V i a -> V i a)
                 -> Network i hs i a
                 -> V i a
                 -> [V i a]
-runNetFeedback_ na = go
+runNetFeedback_ na nxt n0 i0 = i0 : go n0 i0
   where
     go :: Network i hs i a -> V i a -> [V i a]
     go n v = let (v', n') = runNetwork na n v
-             in  v' : go n' v'
+             in  v' : go n' (nxt v')
 {-# INLINE runNetFeedback_ #-}
 
 randomNetwork :: (MonadRandom m, Random (Network i hs o a), Num a)
@@ -288,6 +294,24 @@ adjustNetwork na nudge accept e0 ios = do
           else return err2
 {-# INLINE adjustNetwork #-}
 
+adjustNetworkGD :: forall i hs o a. (Applicative (Network i hs o), Floating a, KnownNat i, KnownNat o, Show a)
+                => NeuralActs a
+                -> a
+                -> a
+                -> [(V i a, V o a)]
+                -> Network i hs o a
+                -> Network i hs o a
+adjustNetworkGD na nudge step ios n0 = n0 ^-^ step *^ signorm nudged
+  where
+    e0 :: a
+    e0 = fst (seriesError na n0 ios)
+    nudged :: Network i hs o a
+    nudged = subtract e0
+           . fst . flip (seriesError na) ios
+         <$> nudges (+nudge) n0
+    {-# INLINE nudged #-}
+
+
 
 trainSeries :: forall i hs o a m. (MonadRandom m, MonadState (Network i hs o a) m, Floating a, Ord a, KnownNat i, KnownNat o, Random a)
             => NeuralActs a
@@ -309,6 +333,23 @@ trainSeries na nudge accept0 accept1 ios n = evalStateT (mapM_ f [0..n]) Nothing
     {-# INLINE f #-}
 {-# INLINE trainSeries #-}
 
+trainSeriesGD :: forall i hs o a. (Floating a, KnownNat i, KnownNat o, Random a, Applicative (Network i hs o), Show a)
+            => NeuralActs a
+            -> a
+            -> a
+            -> [(V i a, V o a)]
+            -> Network i hs o a
+            -> Int
+            -> Network i hs o a
+trainSeriesGD na nudge step ios = iterateN (adjustNetworkGD na nudge step ios)
+{-# INLINE trainSeriesGD #-}
+
+-- bptt :: NeuralActs a
+--      -> a
+--      -> [(V i a, V o a)]
+--      -> Network i hs o a
+--      -> Network i hs o a
+-- bptt (NA f g) ios 
 
 
 -- | Boilerplate instances
@@ -373,3 +414,24 @@ deriving instance Show a => Show (Network i hs o a)
 deriving instance Foldable (Network i hs o)
 deriving instance Traversable (Network i hs o)
 
+instance (KnownNat i, KnownNat s) => Nudges (RNode i s) where
+    nudges f (RNode b i s) = RNode (RNode (f b) i s)
+                                   (flip (RNode b) s <$> nudges f i)
+                                   (RNode b i <$> nudges f s)
+
+instance (KnownNat i, KnownNat o) => Nudges (RLayer i o) where
+    nudges f (RLayer l s) = RLayer l' (RLayer l <$> nudges f s)
+      where
+        l' = (fmap.fmap) (`RLayer` s)
+           . V . V.generate (dim l) $ \i ->
+               let b'  = accumV (\(RNode b iw sw) _ -> RNode (f b) iw sw) l [(i,())]
+                   iw' = V . V.generate dimI $ \j -> accumV (\(RNode b iw sw) _ -> RNode b (accumV (\x _ -> f x) iw [(j,())]) sw) l [(i,())]
+                   sw' = V . V.generate dimO $ \j -> accumV (\(RNode b iw sw) _ -> RNode b iw (accumV (\x _ -> f x) sw [(j,())])) l [(i,())]
+               in  RNode b' iw' sw'
+        dimI = reflectDim (Proxy :: Proxy i)
+        dimO = reflectDim (Proxy :: Proxy o)
+
+instance (KnownNat i, KnownNat o) => Nudges (Network i hs o) where
+    nudges f (NetOL l) = NetOL . fmap NetOL $ nudges f l
+    nudges f (NetIL l n) = NetIL (flip NetIL n <$> nudges f l)
+                                 (NetIL l      <$> nudges f n)
