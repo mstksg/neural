@@ -12,6 +12,7 @@ module Data.Neural.Utility where
 import qualified Data.Vector         as V
 import GHC.TypeLits
 import Data.Proxy
+import Control.DeepSeq
 import Unsafe.Coerce
 import Data.Neural.Types
 import Linear.V
@@ -39,6 +40,17 @@ naLogLog = NA logistic logistic
 runFLayer :: (KnownNat i, Num a) => FLayer i o a -> V i a -> V o a
 runFLayer (FLayer l) v = l !* Node 1 v
 {-# INLINE runFLayer #-}
+
+foldl'' :: NFData b => (b -> a -> b) -> b -> [a] -> b
+foldl'' f = go
+  where
+    go z []     = z
+    go z (x:xs) = let y = f z x in y `deepseq` go y xs
+
+
+-- data Pair5 :: (j -> k -> l -> m -> *) -> (j -> k -> l -> m -> *) -> j -> k -> l -> m -> * where
+--     P5 :: f a b c d -> g a b c d -> Pair5 f g a b c d
+
 
 -- -- newtype MagicNatAdd r = MagicNatAdd (forall (n :: Nat) (m :: Nat). KnownNat (n + m) => Proxy n -> Proxy m -> r)
 -- newtype MagicNatAdd r = MagicNatAdd (forall (n :: Nat) (m :: Nat). KnownNat (n + m) => Proxy n -> Proxy m -> r)
@@ -81,14 +93,14 @@ natAddition x y = knWit x %+ knWit y
 -- logistic' = diff logistic
 -- {-# INLINE logistic' #-}
 
-iterateN :: forall a. (a -> a) -> a -> Int -> a
+iterateN :: forall a. NFData a => (a -> a) -> a -> Int -> a
 iterateN f = go
   where
     go :: a -> Int -> a
     go x n = if n <= 0
                then x
                else let x' = f x
-                    in x' `seq` go x' (n - 1)
+                    in x' `deepseq` go x' (n - 1)
 {-# INLINE iterateN #-}
 
 class Nudges w where

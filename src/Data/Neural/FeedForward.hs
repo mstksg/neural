@@ -109,12 +109,13 @@ trainSample step f g x0 y n0 = snd $ go x0 n0
     adjustHidden :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
     adjustHidden xb node deltao d = (delta, adjustWeights delta xb node)
       where
+        -- instead of (o - target), use deltao, weighted average of errors
         delta = deltao * diff f d
     {-# INLINE adjustHidden #-}
         -- delta = deltao
     -- per weight traversal
     adjustWeights :: KnownNat j => a -> Node j a -> Node j a -> Node j a
-    adjustWeights delta = liftA2 (\w -> subtract (step * delta * w))
+    adjustWeights delta = liftA2 (\w n -> n - step * delta * w)
     {-# INLINE adjustWeights #-}
 {-# INLINE trainSample #-}
 

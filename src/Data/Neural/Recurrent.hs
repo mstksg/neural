@@ -1,28 +1,31 @@
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE RankNTypes       #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE DeriveFoldable      #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE DeriveTraversable   #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveFoldable       #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DeriveTraversable    #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeOperators        #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE FlexibleInstances   #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 module Data.Neural.Recurrent where
 
 import Control.Applicative
-import Control.Arrow
+-- import Control.Arrow
 import Control.DeepSeq
+import Numeric.AD.Rank1.Forward
 import Control.Lens
+import Data.Bifunctor
 import Data.Proxy
 import Control.Monad.Random
+import Data.List
 import qualified Data.Vector as V
 import Control.Monad.State.Strict
 import Debug.Trace
@@ -35,7 +38,7 @@ import Linear.V
 import qualified Data.Binary    as B
 
 data RNode :: Nat -> Nat -> * -> * where
-    RNode :: { rNodeBias :: !a
+    RNode :: { rNodeBias     :: !a
              , rNodeIWeights :: !(V i a)
              , rNodeSWeights :: !(V s a)
              } -> RNode i s a
@@ -47,8 +50,7 @@ data RLayer :: Nat -> Nat -> * -> * where
               } -> RLayer i o a
   deriving (Show, Functor, Foldable, Traversable, Generic)
 
-data Network :: Nat -> [Nat] -> Nat -> *
-             -> * where
+data Network :: Nat -> [Nat] -> Nat -> * -> * where
     NetOL :: !(FLayer i o a) -> Network i '[] o a
     NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
@@ -133,7 +135,7 @@ runNetwork (NA f g) = go
        -> V i' a
        -> (V o' a, Network i' hs' o' a)
     go n v = case n of
-               NetOL l    -> (fmap g (runFLayer l v), n)
+               NetOL l    -> (g <$> runFLayer l v, n)
                NetIL l nI -> let (v' , l')  = runRLayer f l v
                                  (v'', nI') = go nI (f <$> v')
                              in  (v'', NetIL l' nI')
@@ -313,27 +315,27 @@ adjustNetworkGD na nudge step ios n0 = n0 ^-^ step *^ signorm nudged
 
 
 
-trainSeries :: forall i hs o a m. (MonadRandom m, MonadState (Network i hs o a) m, Floating a, Ord a, KnownNat i, KnownNat o, Random a)
-            => NeuralActs a
-            -> (Network i hs o a -> m (Network i hs o a))
-            -> a
-            -> a
-            -> [(V i a, V o a)]
-            -> Int
-            -> m ()
-trainSeries na nudge accept0 accept1 ios n = evalStateT (mapM_ f [0..n]) Nothing
-  where
-    n' :: a
-    n' = fromIntegral n
-    aRange :: a
-    aRange = accept0 - accept1
-    f :: Int -> StateT (Maybe a) m ()
-    f i = StateT $ \lastErr2 ->
-            ((),) . Just <$> adjustNetwork na nudge (accept1 + aRange * fromIntegral i / n') lastErr2 ios
-    {-# INLINE f #-}
-{-# INLINE trainSeries #-}
+-- trainSeries :: forall i hs o a m. (MonadRandom m, MonadState (Network i hs o a) m, Floating a, Ord a, KnownNat i, KnownNat o, Random a)
+--             => NeuralActs a
+--             -> (Network i hs o a -> m (Network i hs o a))
+--             -> a
+--             -> a
+--             -> [(V i a, V o a)]
+--             -> Int
+--             -> m ()
+-- trainSeries na nudge accept0 accept1 ios n = evalStateT (mapM_ f [0..n]) Nothing
+--   where
+--     n' :: a
+--     n' = fromIntegral n
+--     aRange :: a
+--     aRange = accept0 - accept1
+--     f :: Int -> StateT (Maybe a) m ()
+--     f i = StateT $ \lastErr2 ->
+--             ((),) . Just <$> adjustNetwork na nudge (accept1 + aRange * fromIntegral i / n') lastErr2 ios
+--     {-# INLINE f #-}
+-- {-# INLINE trainSeries #-}
 
-trainSeriesGD :: forall i hs o a. (Floating a, KnownNat i, KnownNat o, Random a, Applicative (Network i hs o), Show a)
+trainSeriesGD :: forall i hs o a. (Floating a, KnownNat i, KnownNat o, Random a, Applicative (Network i hs o), Show a, NFData (Network i hs o a))
             => NeuralActs a
             -> a
             -> a
@@ -344,13 +346,323 @@ trainSeriesGD :: forall i hs o a. (Floating a, KnownNat i, KnownNat o, Random a,
 trainSeriesGD na nudge step ios = iterateN (adjustNetworkGD na nudge step ios)
 {-# INLINE trainSeriesGD #-}
 
--- bptt :: NeuralActs a
---      -> a
---      -> [(V i a, V o a)]
---      -> Network i hs o a
---      -> Network i hs o a
--- bptt (NA f g) ios 
+newtype RLayerU :: Nat -> Nat -> * -> * where
+    RLayerU :: { rLayerUNodes :: (V o (RNode i o a)) } -> RLayerU i o a
+  deriving (Show, Functor, Foldable, Traversable, Generic)
 
+instance (KnownNat i, KnownNat o) => Applicative (RLayerU i o) where
+    pure x = RLayerU (pure (pure x))
+    {-# INLINE pure #-}
+    RLayerU l <*> RLayerU l' = RLayerU (liftA2 (<*>) l l')
+    {-# INLINE (<*>) #-}
+
+data NetworkU :: Nat -> [Nat] -> Nat -> * -> * where
+    NetUOL :: !(FLayer i o a) -> NetworkU i '[] o a
+    NetUIL :: KnownNat j => !(RLayerU i j a) -> !(NetworkU j hs o a) -> NetworkU i (j ': hs) o a
+
+deriving instance Functor (NetworkU i hs o)
+
+instance (KnownNat i, KnownNat o) => Applicative (NetworkU i '[] o) where
+    pure = NetUOL . pure
+    {-# INLINE pure #-}
+    NetUOL f <*> NetUOL x = NetUOL (f <*> x)
+    {-# INLINE (<*>) #-}
+
+instance (KnownNat i, KnownNat o, KnownNat j, Applicative (NetworkU j hs o)) => Applicative (NetworkU i (j ': hs) o) where
+    pure x = pure x `NetUIL` pure x
+    {-# INLINE pure #-}
+    NetUIL fi fr <*> NetUIL xi xr = NetUIL (fi <*> xi) (fr <*> xr)
+    {-# INLINE (<*>) #-}
+
+instance NFData a => NFData (NetworkU i hs o a) where
+    rnf (NetUOL (force -> !_)) = ()
+    rnf (NetUIL (force -> !_) (force -> !_)) = ()
+
+instance NFData a => NFData (RLayerU i j a)
+
+
+
+-- same Layer structure as correpsonding NetworkU, except without the bias
+-- term.
+data Deltas :: Nat -> [Nat] -> Nat -> * -> * where
+    DeltasOL :: !(V i a) -> Deltas i '[] o a
+    DeltasIL :: !(V i a) -> !(V j a) -> !(Deltas j hs o a) -> Deltas i (j ': hs) o a
+
+data NetStates :: Nat -> [Nat] -> Nat -> * -> * where
+    NetSOL :: NetStates i '[] o a
+    NetSIL :: KnownNat j => !(V j a) -> !(NetStates j hs o a) -> NetStates i (j ': hs) o a
+
+runRLayerU :: forall i o a. (KnownNat i, KnownNat o, Num a)
+           => (a -> a)
+           -> RLayerU i o a
+           -> V i a
+           -> V o a
+           -> (V o a, V o a)
+runRLayerU f l v s = (v', f <$> v')
+  where
+    v'       = rLayerUNodes l !* RNode 1 v s
+{-# INLINE runRLayerU #-}
+
+runNetworkU :: forall i hs o a. (Num a, KnownNat i)
+            => NeuralActs a
+            -> NetworkU i hs o a
+            -> V i a
+            -> NetStates i hs o a
+            -> (V o a, NetStates i hs o a)
+runNetworkU (NA f g) = go
+  where
+    go :: forall j hs'. KnownNat j
+       => NetworkU j hs' o a
+       -> V j a
+       -> NetStates j hs' o a
+       -> (V o a, NetStates j hs' o a)
+    go n v ns = case n of
+                  NetUOL l ->
+                    (g <$> runFLayer l v, NetSOL)
+                  NetUIL (RLayerU l) n' ->
+                    case ns of
+                      NetSIL s ns' ->
+                        let v' = fmap f (l !* RNode 1 v s)
+                            (o, nso) = go n' v' ns'
+                        in  (o, NetSIL v' nso)
+{-# INLINE runNetworkU #-}
+
+toNetworkU :: Network i hs o a -> (NetStates i hs o a, NetworkU i hs o a)
+toNetworkU n = case n of
+                 NetOL l    -> (NetSOL, NetUOL l)
+                 NetIL l n' -> let (s, n'') = toNetworkU n'
+                                   s' = NetSIL (rLayerState l) s
+                                   l' = RLayerU (rLayerNodes l)
+                               in  (s', NetUIL l' n'')
+{-# INLINE toNetworkU #-}
+
+trainSeries :: forall i hs o a. (KnownNat i, KnownNat o, Fractional a, NFData a, Applicative (NetworkU i hs o))
+            => NeuralActs (Forward a)
+            -> a
+            -> [(V i a, V o a)]
+            -> Network i hs o a
+            -> Network i hs o a
+trainSeries _ _ [] n0 = n0
+trainSeries (NA f g) step ios0 n0 =
+    case ios0 of
+      [] -> n0
+      (x0, y0) : ios' -> let (ds, nus, n) = goTS x0 ns0 y0 ios'
+                             nuAve = (/ fromIntegral n) <$> foldl'' (liftA2 (+)) (pure 0) nus
+                         in  trainStates nuAve ns0 ds
+  where
+    na'@(NA f_ _) = NA (fst . diff' f) (fst . diff' g)
+    (ns0, nu0) = toNetworkU n0
+    goTS :: V i a
+         -> NetStates i hs o a
+         -> V o a
+         -> [(V i a, V o a)]
+         -> (Deltas i hs o a, [NetworkU i hs o a], Int)
+    goTS x s y ios =
+        case ios of
+          [] -> let (d, nu) = trainFinal y x s
+                in  (d, [nu], 1)
+          ((x', y'):ios') ->
+            let (_ , s' ) = runNetworkU na' nu0 x s
+                (d , nus, i) = goTS x' s' y' ios'
+                -- can "run" values from runNetworkU be re-used here?
+                (d', nu ) = trainSample y' x' s d
+            in  (d', nu : nus, i + 1)
+    trainFinal :: V o a
+               -> V i a
+               -> NetStates i hs o a
+               -> (Deltas i hs o a, NetworkU i hs o a)
+    trainFinal y = go nu0
+      where
+        go :: forall j hs'. KnownNat j
+           => NetworkU j hs' o a
+           -> V j a
+           -> NetStates j hs' o a
+           -> (Deltas j hs' o a, NetworkU j hs' o a)
+        go nu x ns =
+          case nu of
+            NetUOL l@(FLayer ln) ->
+              let d              :: V o a
+                  d              = runFLayer l x
+                  delta          :: V o a
+                  ln'            :: V o (Node j a)
+                  (delta, ln')   = unzipV $ liftA3 (adjustOutput (Node 1 x)) ln y d
+                  -- drop contrib from bias term
+                  deltaws        :: V j a
+                  deltaws        = delta *! (nodeWeights <$> ln')
+                  l'             :: FLayer j o a
+                  l'             = FLayer ln'
+              in  (DeltasOL deltaws, NetUOL l')
+            NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
+              case ns of
+                NetSIL s ns' ->
+                  let d, s', o :: V k a
+                      (d, s') = runRLayerU f_ l x s
+                      o = s'
+                      deltaos :: Deltas k ks o a
+                      n'' :: NetworkU k ks o a
+                      (deltaos, n'') = go nu' o ns'
+                      -- deltaos from inputs only, not state
+                      deltaos' :: V k a
+                      deltaos' = case deltaos of
+                                   DeltasOL dos -> dos
+                                   DeltasIL dos _ _ -> dos
+                      delta :: V k a
+                      ln' :: V k (RNode j k a)
+                      (delta, ln') = unzipV $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
+                      deltawsI :: V j a
+                      deltawsS :: V k a
+                      deltawsI = delta *! (rNodeIWeights <$> ln')
+                      deltawsS = delta *! (rNodeSWeights <$> ln')
+                      l' :: RLayerU j k a
+                      l' = RLayerU ln'
+                  in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
+    trainSample :: V o a
+                -> V i a
+                -> NetStates i hs o a
+                -> Deltas i hs o a
+                -> (Deltas i hs o a, NetworkU i hs o a)
+    trainSample y = go nu0
+      where
+        go :: forall j hs'. KnownNat j
+           => NetworkU j hs' o a
+           -> V j a
+           -> NetStates j hs' o a
+           -> Deltas j hs' o a
+           -> (Deltas j hs' o a, NetworkU j hs' o a)
+        go nu x ns ds =
+          case nu of
+            NetUOL l@(FLayer ln) ->
+              let d              :: V o a
+                  d              = runFLayer l x
+                  delta          :: V o a
+                  ln'            :: V o (Node j a)
+                  (delta, ln')   = unzipV $ liftA3 (adjustOutput (Node 1 x)) ln y d
+                  -- drop contrib from bias term
+                  deltaws        :: V j a
+                  deltaws        = delta *! (nodeWeights <$> ln')
+                  l'             :: FLayer j o a
+                  l'             = FLayer ln'
+              in  (DeltasOL deltaws, NetUOL l')
+            NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
+              case ns of
+                NetSIL s ns' ->
+                  case ds of
+                    DeltasIL _ (delS :: V k a) ds' ->
+                      let d, s', o :: V k a
+                          (d, s') = runRLayerU f_ l x s
+                          o = s'
+                          deltaos :: Deltas k ks o a
+                          n'' :: NetworkU k ks o a
+                          (deltaos, n'') = go nu' o ns' ds'
+                          -- deltaos from inputs only, not state
+                          deltaos' :: V k a
+                          deltaos' = case deltaos of            -- yeaa :D
+                                       DeltasOL dos     -> dos ^+^ delS
+                                       DeltasIL dos _ _ -> dos ^+^ delS
+                          delta :: V k a
+                          ln' :: V k (RNode j k a)
+                          (delta, ln') = unzipV $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
+                          deltawsI :: V j a
+                          deltawsS :: V k a
+                          deltawsI = delta *! (rNodeIWeights <$> ln')
+                          deltawsS = delta *! (rNodeSWeights <$> ln')
+                          l' :: RLayerU j k a
+                          l' = RLayerU ln'
+                      in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
+    trainStates :: forall j hs'. KnownNat j
+                => NetworkU j hs' o a
+                -> NetStates j hs' o a
+                -> Deltas j hs' o a
+                -> Network j hs' o a
+    trainStates nu ns ds =
+      case nu of
+        NetUOL l -> NetOL l
+        NetUIL (RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
+          case ns of
+            NetSIL s ns' ->
+              case ds of
+                DeltasIL _ (delS :: V k a) ds' ->
+                      -- should this have more/less steppage?
+                  let s' = liftA2 (\d s0 -> s0 - d * step) delS s
+                  in  RLayer ln s' `NetIL` trainStates nu' ns' ds'
+    adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
+    adjustOutput xb node y' d = (delta, adjustWeights delta xb node)
+      where
+        delta = let (o, o') = diff' g d
+                in  (o - y') * o'
+    {-# INLINE adjustOutput #-}
+    adjustHidden :: Applicative f => f a -> f a -> a -> a -> (a, f a)
+    adjustHidden xb node deltao d = (delta, adjustWeights delta xb node)
+      where
+        -- instead of (o - target), use deltao, weighted average of errors
+        delta = deltao * diff f d
+    {-# INLINE adjustHidden #-}
+    -- is this correct? should it be x and not y?
+    adjustWeights :: Applicative f => a -> f a -> f a -> f a
+    adjustWeights delta = liftA2 (\x n -> n - step * delta * x)
+    {-# INLINE adjustWeights #-}
+
+
+    -- go :: forall j hs'. KnownNat j => [(V j a, V o a)] -> Network j hs' o a -> (V j a, [Network j hs' o a])
+    -- go ios n = undefined
+  -- where
+  --   go :: forall j hs'. KnownNat j => [(V j a, V o a)] -> Network j hs' o a -> (V j a, [Network j hs' o a])
+  --   go ios n = case ios of
+  --                []              -> (pure 0, [])
+  --                ((x, y) : ios') ->
+  --                  case n of
+  --                    NetOL l@(FLayer ln) ->
+  --                      let d :: V o a
+  --                          d = runFLayer l x
+  --                          delta :: V o a
+  --                          ln' :: V o (Node j a)
+  --                          (delta, ln') = unzipV $ liftA3 (adjustOutput (Node 1 x)) ln y d
+  --                          -- drop contrib from bias terms
+  --                          deltaws :: V j a
+  --                          deltaws = delta *! (nodeWeights <$> ln')
+  --                          l' :: FLayer j o a
+  --                          l' = FLayer ln'
+  --                          rest :: [Network j hs' o a]
+  --                          rest = snd $ go ios' n
+  --                      in  (deltaws, NetOL l' : rest)
+  --                    NetIL l@(RLayer ln ls :: RLayer j k a) (n' :: Network k ks o a) ->
+  --                      let d :: V k a
+  --                          (d, l@(RLayer ln' ls')) = runRLayer (fst . diff' f) l x
+  --                          o :: V k a
+  --                          o = fst . diff' f <$> d
+  --                          deltaos :: V k a
+  --                          n'' :: [Network k ks o a]
+  --                          (deltaos, n'') = goO o n'
+  --                      in  undefined
+  --   goO :: forall j hs'. KnownNat j => V j a -> FLayer j o a -> (V j a, FLayer j o a)
+  --   goO x l@(FLayer ln) = undefined
+  --   -- NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
+  --   adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
+  --   adjustOutput xb node y' d = (delta, adjustWeights delta xb node)
+  --     where
+  --       delta = let (o, o') = diff' g d
+  --               in  (o - y') * o'
+  --   {-# INLINE adjustOutput #-}
+  --   adjustWeights :: KnownNat j => a -> Node j a -> Node j a -> Node j a
+  --   adjustWeights delta = liftA2 (\w n -> n - step * delta * w)
+  --   {-# INLINE adjustWeights #-}
+          -- let d :: V k a
+          --     d                    = runFLayer l x
+          --     o :: V k a
+          --     o                    = fst . diff' f <$> d
+          --     deltaos :: V k a
+          --     n'' :: Network k ks o a
+          --     (deltaos, n'')       = go o n'
+          --     delta :: V k a
+          --     ln' :: V k (Node j a)
+          --     (delta, ln')         = unzipV $ liftA3 (adjustHidden xb) ln deltaos d
+          --     deltaws :: V j a
+          --     deltaws              = delta *! (nodeWeights <$> ln')
+          --     l' :: FLayer j k a
+          --     l'                   = FLayer ln'
+                   -- NetOL :: !(FLayer i o a) -> Network i '[] o a
+
+    -- go :: forall j hs'. KnownNat j => V j a -> Network j hs' o a -> (V j a, Network j hs' o a)
 
 -- | Boilerplate instances
 
