@@ -165,28 +165,28 @@ runNetStream_ na = go
     go _ []     = []
 {-# INLINE runNetStream_ #-}
 
-runNetFeedback :: forall i hs a. (Num a, KnownNat i)
+runNetFeedback :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
                => NeuralActs a
-                -> (V i a -> V i a)
-               -> Network i hs i a
+               -> (V o a -> V i a)
+               -> Network i hs o a
                -> V i a
-               -> [(V i a, Network i hs i a)]
-runNetFeedback na nxt n0 i0 = (i0, n0) : go n0 i0
+               -> [(V o a, Network i hs o a)]
+runNetFeedback na nxt = go
   where
-    go :: Network i hs i a -> V i a -> [(V i a, Network i hs i a)]
+    go :: Network i hs o a -> V i a -> [(V o a, Network i hs o a)]
     go n v = let res@(v', n') = runNetwork na n v
              in  res : go n' (nxt v')
 {-# INLINE runNetFeedback #-}
 
-runNetFeedback_ :: forall i hs a. (Num a, KnownNat i)
+runNetFeedback_ :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
                 => NeuralActs a
-                -> (V i a -> V i a)
-                -> Network i hs i a
+                -> (V o a -> V i a)
+                -> Network i hs o a
                 -> V i a
-                -> [V i a]
-runNetFeedback_ na nxt n0 i0 = i0 : go n0 i0
+                -> [V o a]
+runNetFeedback_ na nxt = go
   where
-    go :: Network i hs i a -> V i a -> [V i a]
+    go :: Network i hs o a -> V i a -> [V o a]
     go n v = let (v', n') = runNetwork na n v
              in  v' : go n' (nxt v')
 {-# INLINE runNetFeedback_ #-}

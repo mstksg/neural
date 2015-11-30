@@ -131,16 +131,23 @@ toNetworkU n = case n of
 trainSeries :: forall i hs o a. (KnownNat i, KnownNat o, Fractional a, NFData a, Applicative (NetworkU i hs o))
             => NeuralActs (Forward a)
             -> a
+            -> a
             -> [(V i a, V o a)]
             -> Network i hs o a
             -> Network i hs o a
-trainSeries _ _ [] n0 = n0
-trainSeries (NA f g) step ios0 n0 =
+trainSeries _ _ _ [] n0 = n0
+trainSeries (NA f g) step stepS ios0 n0 =
     case ios0 of
       [] -> n0
       (x0, y0) : ios' -> let (ds, nus, n) = goTS x0 ns0 y0 ios'
-                             nuAve = (/ fromIntegral n) <$> foldl'' (liftA2 (+)) (pure 0) nus
-                         in  trainStates nuAve ns0 ds
+                             -- is averaging really the best way?
+                             -- can we like, not?
+                             -- maybe instead of averaging out the
+                             -- differences...add the steps?
+                             -- hm, not clear which one is better.
+                             nuTot = (* (step / fromIntegral n)) <$> foldl'' (liftA2 (+)) (pure 0) nus
+                             nuFin = liftA2 (-) nu0 nuTot
+                         in  trainStates nuFin ns0 ds
   where
     na'@(NA f_ _) = NA (fst . diff' f) (fst . diff' g)
     (ns0, nu0) = toNetworkU n0
@@ -177,12 +184,13 @@ trainSeries (NA f g) step ios0 n0 =
                   d              = runFLayer l x
                   delta          :: V o a
                   ln'            :: V o (Node j a)
-                  (delta, ln')   = unzipV $ liftA3 (adjustOutput (Node 1 x)) ln y d
+                  (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
                   -- drop contrib from bias term
                   deltaws        :: V j a
                   deltaws        = delta *! (nodeWeights <$> ln')
                   l'             :: FLayer j o a
-                  l'             = FLayer ln'
+                  -- l'             = FLayer ln'
+                  l'             = FLayer shft
               in  (DeltasOL deltaws, NetUOL l')
             NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
               case ns of
@@ -200,15 +208,17 @@ trainSeries (NA f g) step ios0 n0 =
                                    DeltasIL dos _ _ -> dos
                       delta :: V k a
                       ln' :: V k (RNode j k a)
-                      (delta, ln') = unzipV $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
+                      (delta, ln', shft) = unzipV3 $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
                       deltawsI :: V j a
                       deltawsS :: V k a
                       deltawsI = delta *! (rNodeIWeights <$> ln')
                       deltawsS = delta *! (rNodeSWeights <$> ln')
                       l' :: RLayerU j k a
-                      l' = RLayerU ln'
+                      -- l' = RLayerU ln'
+                      l' = RLayerU shft
                   in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
                 _ -> error "impossible.  nu and ns should be same constructors."
+    {-# INLINE trainFinal #-}
     trainSample :: V o a
                 -> V i a
                 -> NetStates i hs o a
@@ -229,12 +239,12 @@ trainSeries (NA f g) step ios0 n0 =
                   d              = runFLayer l x
                   delta          :: V o a
                   ln'            :: V o (Node j a)
-                  (delta, ln')   = unzipV $ liftA3 (adjustOutput (Node 1 x)) ln y d
+                  (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
                   -- drop contrib from bias term
                   deltaws        :: V j a
                   deltaws        = delta *! (nodeWeights <$> ln')
                   l'             :: FLayer j o a
-                  l'             = FLayer ln'
+                  l'             = FLayer shft
               in  (DeltasOL deltaws, NetUOL l')
             NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
               case ns of
@@ -254,16 +264,17 @@ trainSeries (NA f g) step ios0 n0 =
                                        DeltasIL dos _ _ -> dos ^+^ delS
                           delta :: V k a
                           ln' :: V k (RNode j k a)
-                          (delta, ln') = unzipV $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
+                          (delta, ln', shft) = unzipV3 $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
                           deltawsI :: V j a
                           deltawsS :: V k a
                           deltawsI = delta *! (rNodeIWeights <$> ln')
                           deltawsS = delta *! (rNodeSWeights <$> ln')
                           l' :: RLayerU j k a
-                          l' = RLayerU ln'
+                          l' = RLayerU shft
                       in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
                     _ -> error "impossible.  nu and ds should be same constructors."
                 _ -> error "impossible.  nu and ns should be same constructors."
+    {-# INLINE trainSample #-}
     trainStates :: forall j hs'. KnownNat j
                 => NetworkU j hs' o a
                 -> NetStates j hs' o a
@@ -277,19 +288,21 @@ trainSeries (NA f g) step ios0 n0 =
             NetSIL s ns' ->
               case ds of
                 DeltasIL _ (delS :: V k a) ds' ->
-                      -- should this have more/less steppage?
-                  let s' = liftA2 (\d s0 -> s0 - d * step) delS s
+                     -- RLayer ln s `NetIL` trainStates nu' ns' ds'
+                      -- -- should this have more/less steppage?
+                  let s' = liftA2 (\d s0 -> s0 - d * stepS) delS s
                   in  RLayer ln s' `NetIL` trainStates nu' ns' ds'
                 _ -> error "impossible.  nu and ds should be same constructors."
             _ -> error "impossible.  nu and ns should be same constructors."
-    adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a)
-    adjustOutput xb node y' d = (delta, adjustWeights delta xb node)
+    {-# INLINE trainStates #-}
+    adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a, Node j a)
+    adjustOutput xb node y' d = (delta, adjustWeights delta xb node, weightShifts delta xb)
       where
         delta = let (o, o') = diff' g d
                 in  (o - y') * o'
     {-# INLINE adjustOutput #-}
-    adjustHidden :: Applicative f => f a -> f a -> a -> a -> (a, f a)
-    adjustHidden xb node deltao d = (delta, adjustWeights delta xb node)
+    adjustHidden :: Applicative f => f a -> f a -> a -> a -> (a, f a, f a)
+    adjustHidden xb node deltao d = (delta, adjustWeights delta xb node, weightShifts delta xb)
       where
         -- instead of (o - target), use deltao, weighted average of errors
         delta = deltao * diff f d
@@ -297,6 +310,9 @@ trainSeries (NA f g) step ios0 n0 =
     adjustWeights :: Applicative f => a -> f a -> f a -> f a
     adjustWeights delta = liftA2 (\x n -> n - step * delta * x)
     {-# INLINE adjustWeights #-}
+    weightShifts :: Applicative f => a -> f a -> f a
+    weightShifts delta = fmap (\x -> delta * x)
+    {-# INLINE weightShifts #-}
 
 -- | Stochastic
 

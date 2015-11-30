@@ -17,7 +17,6 @@ import Unsafe.Coerce
 import Data.Neural.Types
 import Linear.V
 import Linear
-import Numeric.AD
 import Type.Class.Witness
 
 unzipV :: V i (a, b) -> (V i a, V i b)
@@ -25,6 +24,13 @@ unzipV (V v) = (V x, V y)
   where
     (x, y) = V.unzip v
 {-# INLINE unzipV #-}
+
+unzipV3 :: V i (a, b, c) -> (V i a, V i b, V i c)
+unzipV3 (V v) = (V x, V y, V z)
+  where
+    (x, y, z) = V.unzip3 v
+{-# INLINE unzipV3 #-}
+
 
 logistic :: Floating a => a -> a
 logistic = recip . (+ 1) . exp . negate
