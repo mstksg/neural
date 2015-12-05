@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE PolyKinds            #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
@@ -19,17 +20,20 @@ module Data.Neural.Recurrent where
 
 import Control.Applicative
 import Control.DeepSeq
-import Control.Lens
+import Control.Lens hiding        ((:<))
 import Control.Monad.Random
 import Control.Monad.State.Strict
-import Data.Bifunctor
 import Data.Neural.Types
 import Data.Neural.Utility
 import Data.Proxy
+import Data.Reflection
+import Data.Type.Product
 import GHC.Generics
 import GHC.TypeLits
+import GHC.TypeLits.List
 import Linear
 import Linear.V
+import Type.Class.Known
 import qualified Data.Binary      as B
 import qualified Data.Vector      as V
 
@@ -51,6 +55,13 @@ data Network :: Nat -> [Nat] -> Nat -> * -> * where
     NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
 infixr 5 `NetIL`
+
+data SomeNet :: * -> * where
+    SomeNet :: (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Network i hs o a -> SomeNet a
+
+data OpaqueNet :: Nat -> Nat -> * -> * where
+    OpaqueNet :: (KnownNats hs, Known (Prod Proxy) hs) => Network i hs o a -> OpaqueNet i o a
+
 
 instance Functor (RNode i s) where
     fmap f (RNode b i s) = RNode (f b) (fmap f i) (fmap f s)
@@ -191,6 +202,22 @@ runNetFeedback_ na nxt = go
              in  v' : go n' (nxt v')
 {-# INLINE runNetFeedback_ #-}
 
+runNetFeedbackM_ :: forall i hs o a m. (Num a, KnownNat i, Monad m, KnownNat o)
+                 => NeuralActs a
+                 -> (V o a -> m (V i a))
+                 -> Network i hs o a
+                 -> Int
+                 -> V i a
+                 -> m [V o a]
+runNetFeedbackM_ na nxt = go
+  where
+    go :: Network i hs o a -> Int -> V i a -> m [V o a]
+    go n i v | i <= 0    = return []
+             | otherwise = do
+                 let (v', n') = runNetwork na n v
+                 vs <- go n' (i - 1) =<< nxt v'
+                 return $ v' : vs
+
 randomNetwork :: (MonadRandom m, Random (Network i hs o a), Num a)
               => m (Network i hs o a)
 randomNetwork = fmap (subtract 1 . (*2)) <$> getRandom
@@ -241,6 +268,15 @@ seriesError :: (KnownNat i, KnownNat o, Num a, Traversable t)
 seriesError na n ios = runState (seriesErrorS na ios) n
 {-# INLINE seriesError #-}
 
+seriesError_ :: (KnownNat i, KnownNat o, Num a, Traversable t)
+             => NeuralActs a
+             -> Network i hs o a
+             -> t (V i a, V o a)
+             -> a
+seriesError_ na n ios = evalState (seriesErrorS na ios) n
+{-# INLINE seriesError_ #-}
+
+
 seriesErrorS :: forall i hs o a t m. (KnownNat i, KnownNat o, Num a, MonadState (Network i hs o a) m, Traversable t)
              => NeuralActs a
              -> t (V i a, V o a)
@@ -263,16 +299,15 @@ instance Functor (Network i hs o) where
                  NetIL l n' -> fmap f l `NetIL` fmap f n'
     {-# INLINE fmap #-}
 
-instance (KnownNat i, KnownNat o) => Applicative (Network i '[] o) where
-    pure = NetOL . pure
-    {-# INLINE pure #-}
-    NetOL f <*> NetOL x = NetOL (f <*> x)
-    {-# INLINE (<*>) #-}
+-- instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Applicative (Network i hs o) where
 
-instance (KnownNat i, KnownNat o, KnownNat j, Applicative (Network j hs o)) => Applicative (Network i (j ': hs) o) where
-    pure x = pure x `NetIL` pure x
-    {-# INLINE pure #-}
+instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Applicative (Network i hs o) where
+    pure x = case known :: Prod Proxy hs of
+               Ø      -> NetOL (pure x)
+               _ :< _ -> pure x `NetIL` pure x
+    NetOL f     <*> NetOL x = NetOL (f <*> x)
     NetIL fi fr <*> NetIL xi xr = NetIL (fi <*> xi) (fr <*> xr)
+    _           <*> _           = error "this should never happen"
     {-# INLINE (<*>) #-}
 
 instance Applicative (Network i hs o) => Additive (Network i hs o) where
@@ -289,25 +324,24 @@ instance Applicative (Network i hs o) => Additive (Network i hs o) where
 
 instance (Applicative (Network i hs o)) => Metric (Network i hs o)
 
+instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, Random a) => Random (Network i hs o a) where
+    random = runState $ do
+      case known :: Prod Proxy hs of
+        Ø      -> NetOL <$> state random
+        _ :< _ -> NetIL <$> state random <*> state random
+    randomR rng = runState $ do
+      case rng of
+        (NetOL rmn, NetOL rmx)         -> NetOL <$> state (randomR (rmn, rmx))
+        (NetIL lmn nmn, NetIL lmx nmx) -> NetIL <$> state (randomR (lmn, lmx))
+                                                <*> state (randomR (nmn, nmx))
+        (_, _)                         -> error "impossible!"
 
-instance (KnownNat i, KnownNat o, Random a) => Random (Network i '[] o a) where
-    random = first NetOL . random
-    randomR (NetOL rmn, NetOL rmx) = first NetOL . randomR (rmn, rmx)
-
-instance (KnownNat i, KnownNat o, KnownNat j, Random a, Random (Network j hs o a)) => Random (Network i (j ': hs) o a) where
-    random g = let (l, g') = random g
-               in  first (l `NetIL`) (random g')
-    randomR (NetIL lmn nmn, NetIL lmx nmx) g =
-        let (l , g') = randomR (lmn, lmx) g
-        in  first (l `NetIL`) (randomR (nmn, nmx) g')
-
-instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Network i '[] o a) where
-    put (NetOL l) = B.put l
-    get = NetOL <$> B.get
-
-instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
+instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, B.Binary a) => B.Binary (Network i hs o a) where
+    put (NetOL l)    = B.put l
     put (NetIL l n') = B.put l *> B.put n'
-    get = NetIL <$> B.get <*> B.get
+    get = case known :: Prod Proxy hs of
+            Ø      -> NetOL <$> B.get
+            _ :< _ -> NetIL <$> B.get <*> B.get
 
 instance NFData a => NFData (Network i hs o a) where
     rnf (NetOL (force -> !_)) = ()
@@ -338,3 +372,102 @@ instance (KnownNat i, KnownNat o) => Nudges (Network i hs o) where
     nudges f (NetOL l) = NetOL . fmap NetOL $ nudges f l
     nudges f (NetIL l n) = NetIL (flip NetIL n <$> nudges f l)
                                  (NetIL l      <$> nudges f n)
+
+deriving instance Show a => Show (SomeNet a)
+deriving instance Functor SomeNet
+deriving instance Foldable SomeNet
+deriving instance Traversable SomeNet
+
+instance B.Binary a => B.Binary (SomeNet a) where
+    put sn = case sn of
+               SomeNet (n :: Network i hs o a) -> do
+                 B.put $ natVal (Proxy :: Proxy i)
+                 B.put $ natVal (Proxy :: Proxy o)
+                 B.put $ OpaqueNet n
+    get = do
+      i <- B.get
+      o <- B.get
+      reifyNat i $ \(Proxy :: Proxy i) ->
+        reifyNat o $ \(Proxy :: Proxy o) -> do
+          oqn <- B.get :: B.Get (OpaqueNet i o a)
+          return $ case oqn of
+                     OpaqueNet n -> SomeNet n
+
+deriving instance Show a => Show (OpaqueNet i o a)
+deriving instance Functor (OpaqueNet i o)
+deriving instance Foldable (OpaqueNet i o)
+deriving instance Traversable (OpaqueNet i o)
+
+instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (OpaqueNet i o a) where
+    put oqn = case oqn of
+                OpaqueNet n -> do
+                  case n of
+                    NetOL l -> do
+                      B.put True
+                      B.put l
+                    NetIL (l :: RLayer i j a) (n' :: Network j js o a) -> do
+                      B.put False
+                      B.put $ natVal (Proxy :: Proxy j)
+                      B.put l
+                      B.put (OpaqueNet n')
+    get = do
+      isOL <- B.get
+      if isOL
+        then do
+          OpaqueNet . NetOL <$> B.get
+        else do
+          j <- B.get
+          reifyNat j $ \(Proxy :: Proxy j) -> do
+            l   <- B.get :: B.Get (RLayer i j a)
+            nqo <- B.get :: B.Get (OpaqueNet j o a)
+            return $ case nqo of
+              OpaqueNet n -> OpaqueNet $ l `NetIL` n
+
+asOpaqueNet :: SomeNet a
+            -> (forall i o. (KnownNat i, KnownNat o) => OpaqueNet i o a -> r)
+            -> r
+asOpaqueNet sn f = case sn of
+                     SomeNet n -> f (OpaqueNet n)
+
+randomNetworkFrom :: (KnownNat i, KnownNats hs, KnownNat o, MonadRandom m, Random a, Num a)
+                  => Proxy i
+                  -> Prod Proxy hs
+                  -> Proxy o
+                  -> m (Network i hs o a)
+randomNetworkFrom _ hs o =
+    case hs of
+      Ø       -> NetOL . fmap (subtract 1 . (*2)) <$> getRandom
+      j :< js -> do
+        l <- fmap (subtract 1 . (*2)) <$> getRandom
+        n <- randomNetworkFrom j js o
+        return $ l `NetIL` n
+
+-- netApplicative :: (KnownNat i, KnownNats hs, KnownNat o)
+--                => Proxy i
+--                -> Prod Proxy hs
+--                -> Proxy o
+--                -> Dict (Applicative (Network i hs o))
+-- netApplicative _ hs o = case hs of
+--                           Ø       -> Dict
+--                           j :< js -> case netApplicative j js o of
+--                                        Dict -> Dict
+
+-- netInstance :: forall i hs o f n. (KnownNat i, KnownNats hs, KnownNat o)
+--             => (forall i'. (KnownNat i', KnownNat o) :- f (n i' '[] o))
+--             -> (forall i' j js. (KnownNat i', KnownNat j, KnownNat o, f (n j js o)) :- f (n i' (j ': js) o))
+--             -> Proxy i
+--             -> Prod Proxy hs
+--             -> Proxy o
+--             -> Dict (f (n i hs o))
+-- netInstance eBase eRec = go
+--   where
+--     go :: forall i' hs'. (KnownNat i', KnownNats hs')
+--        => Proxy i'
+--        -> Prod Proxy hs'
+--        -> Proxy o
+--        -> Dict (f (n i' hs' o))
+--     go _ hs o = case hs of
+--                   Ø -> Dict \\ (eBase :: (KnownNat i', KnownNat o) :- f (n i' '[] o))
+--                   (j :: Proxy j) :< (js :: Prod Proxy js) ->
+--                     case go j js o of
+--                       Dict -> Dict \\ (eRec :: (KnownNat i', KnownNat j, KnownNat o, f (n j js o)) :- f (n i' (j ': js) o))

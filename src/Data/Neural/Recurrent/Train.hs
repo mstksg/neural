@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE DeriveFoldable      #-}
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE DeriveGeneric       #-}
@@ -18,10 +19,10 @@ module Data.Neural.Recurrent.Train where
 
 import Control.Applicative
 import Control.DeepSeq
+import Control.Monad.Random
+import Control.Monad.State.Strict
 import Data.Neural.Recurrent
 import Data.Neural.Types
-import Control.Monad.State.Strict
-import Control.Monad.Random
 import Data.Neural.Utility
 import GHC.Generics
 import GHC.TypeLits
@@ -145,7 +146,8 @@ trainSeries (NA f g) step stepS ios0 n0 =
                              -- maybe instead of averaging out the
                              -- differences...add the steps?
                              -- hm, not clear which one is better.
-                             nuTot = (* (step / fromIntegral n)) <$> foldl'' (liftA2 (+)) (pure 0) nus
+                             -- nuTot = (* (step / fromIntegral n)) <$> foldl'' (liftA2 (+)) (pure 0) nus
+                             nuTot = (* (step / fromIntegral n)) <$> nus
                              nuFin = liftA2 (-) nu0 nuTot
                          in  trainStates nuFin ns0 ds
   where
@@ -155,17 +157,17 @@ trainSeries (NA f g) step stepS ios0 n0 =
          -> NetStates i hs o a
          -> V o a
          -> [(V i a, V o a)]
-         -> (Deltas i hs o a, [NetworkU i hs o a], Int)
+         -> (Deltas i hs o a, NetworkU i hs o a, Int)
     goTS (force-> !x) (force-> !s) (force-> !y) ios =
         case ios of
           [] -> let (force-> !d, force-> !nu) = trainFinal y x s
-                in  (d, [nu], 1)
+                in  (d, nu, 1)
           ((x', y'):ios') ->
             let (_ , s' ) = runNetworkU na' nu0 x s
                 (force-> !d , force-> !nus, force-> !i) = goTS x' s' y' ios'
                 -- can "run" values from runNetworkU be re-used here?
                 (d', nu ) = trainSample y' x' s d
-            in  (d', nu : nus, i + 1)
+            in  (d', liftA2 (+) nu nus, i + 1)
     trainFinal :: V o a
                -> V i a
                -> NetStates i hs o a
@@ -187,7 +189,8 @@ trainSeries (NA f g) step stepS ios0 n0 =
                   (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
                   -- drop contrib from bias term
                   deltaws        :: V j a
-                  deltaws        = delta *! (nodeWeights <$> ln')
+                  -- deltaws        = delta *! (nodeWeights <$> ln')
+                  deltaws        = delta *! (nodeWeights <$> ln)
                   l'             :: FLayer j o a
                   -- l'             = FLayer ln'
                   l'             = FLayer shft
@@ -211,8 +214,10 @@ trainSeries (NA f g) step stepS ios0 n0 =
                       (delta, ln', shft) = unzipV3 $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
                       deltawsI :: V j a
                       deltawsS :: V k a
-                      deltawsI = delta *! (rNodeIWeights <$> ln')
-                      deltawsS = delta *! (rNodeSWeights <$> ln')
+                      deltawsI = delta *! (rNodeIWeights <$> ln)
+                      deltawsS = delta *! (rNodeSWeights <$> ln)
+                      -- deltawsI = delta *! (rNodeIWeights <$> ln')
+                      -- deltawsS = delta *! (rNodeSWeights <$> ln')
                       l' :: RLayerU j k a
                       -- l' = RLayerU ln'
                       l' = RLayerU shft
@@ -242,7 +247,8 @@ trainSeries (NA f g) step stepS ios0 n0 =
                   (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
                   -- drop contrib from bias term
                   deltaws        :: V j a
-                  deltaws        = delta *! (nodeWeights <$> ln')
+                  -- deltaws        = delta *! (nodeWeights <$> ln')
+                  deltaws        = delta *! (nodeWeights <$> ln)
                   l'             :: FLayer j o a
                   l'             = FLayer shft
               in  (DeltasOL deltaws, NetUOL l')
@@ -267,8 +273,10 @@ trainSeries (NA f g) step stepS ios0 n0 =
                           (delta, ln', shft) = unzipV3 $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
                           deltawsI :: V j a
                           deltawsS :: V k a
-                          deltawsI = delta *! (rNodeIWeights <$> ln')
-                          deltawsS = delta *! (rNodeSWeights <$> ln')
+                          -- deltawsI = delta *! (rNodeIWeights <$> ln')
+                          -- deltawsS = delta *! (rNodeSWeights <$> ln')
+                          deltawsI = delta *! (rNodeIWeights <$> ln)
+                          deltawsS = delta *! (rNodeSWeights <$> ln)
                           l' :: RLayerU j k a
                           l' = RLayerU shft
                       in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
@@ -403,4 +411,10 @@ trainSeriesGD :: forall i hs o a. (Floating a, KnownNat i, KnownNat o, Random a,
 trainSeriesGD na nudge step ios = iterateN (adjustNetworkGD na nudge step ios)
 {-# INLINE trainSeriesGD #-}
 
+-- netUApplicative :: (KnownNat i, KnownNats hs, KnownNat o)
+--                 => Proxy i
+--                 -> Prod Proxy hs
+--                 -> Proxy o
+--                 -> Dict (Applicative (NetworkU i hs o))
+-- netUApplicative = netInstance (Sub Dict) (Sub Dict)
 
