@@ -9,22 +9,29 @@
 
 module Data.Neural.Utility where
 
-import qualified Data.Vector         as V
-import GHC.TypeLits
-import Data.Proxy
 import Control.DeepSeq
-import Unsafe.Coerce
 import Data.Neural.Types
-import Linear.V
+import Data.Proxy
+import Data.Reflection
+import Data.Type.Product
+import GHC.TypeLits
+import GHC.TypeLits.List
 import Linear
-import Numeric.AD
-import Type.Class.Witness
+import Linear.V
+import qualified Data.Vector as V
 
 unzipV :: V i (a, b) -> (V i a, V i b)
 unzipV (V v) = (V x, V y)
   where
     (x, y) = V.unzip v
 {-# INLINE unzipV #-}
+
+unzipV3 :: V i (a, b, c) -> (V i a, V i b, V i c)
+unzipV3 (V v) = (V x, V y, V z)
+  where
+    (x, y, z) = V.unzip3 v
+{-# INLINE unzipV3 #-}
+
 
 logistic :: Floating a => a -> a
 logistic = recip . (+ 1) . exp . negate
@@ -58,32 +65,25 @@ foldl'' f = go
 -- reifyAddition :: forall n m a. (KnownNat n, KnownNat m) => Proxy n -> Proxy m -> (forall n' m'. KnownNat (n' + m') => Proxy n' -> Proxy m' -> a) -> a
 -- reifyAddition x y f = unsafeCoerce (MagicNatAdd f :: MagicNatAdd a) (natVal x + natVal y) Proxy Proxy
 
--- http://lpaste.net/145826
-knWit :: KnownNat n => Proxy n -> Wit (KnownNat n)
-knWit _ = Wit
+netStructVal :: Integer -> [Integer] -> Integer -> Maybe NetStruct
+netStructVal x ys z = do
+    SomeNat  i  <- someNatVal x
+    SomeNats hs <- someNatsVal ys
+    SomeNat  o  <- someNatVal z
+    return $ NetStruct i hs o
 
-witVal :: forall n. Wit (KnownNat n) -> Integer
-witVal Wit = natVal (Proxy :: Proxy n)
+reifyNetStruct :: Integer -> [Integer] -> Integer
+               -> (forall i hs o. (KnownNat i, KnownNat o, KnownNats hs)
+                               => Proxy i -> Prod Proxy hs -> Proxy o -> r )
+               -> r
+reifyNetStruct x ys z f = reifyNat x $ \i ->
+                            reifyNats ys $ \hs ->
+                              reifyNat z $ \o ->
+                                f i hs o
 
-infixl 6 %+
-(%+) :: forall n m. Wit (KnownNat n) -> Wit (KnownNat m) -> Wit (KnownNat (n + m))
-x %+ y = case someNatVal (witVal x + witVal y) of
-           Just (SomeNat z) -> unsafeCoerce (knWit z)
-           _                -> error "what"
-
-infixl 7 %*
-(%*) :: forall n m. Wit (KnownNat n) -> Wit (KnownNat m) -> Wit (KnownNat (n * m))
-x %* y = case someNatVal (witVal x * witVal y) of
-           Just (SomeNat z) -> unsafeCoerce (knWit z)
-           _                -> error "what"
-
-
-withWit :: Wit c -> (c => r) -> r
-withWit w x = case w of Wit -> x
-
-natAddition :: (KnownNat n, KnownNat m) => Proxy n -> Proxy m -> Wit (KnownNat (n + m))
-natAddition x y = knWit x %+ knWit y
-
+fromNetStruct :: NetStruct -> (Integer, [Integer], Integer)
+fromNetStruct ns = case ns of
+                     NetStruct i hs o -> (natVal i, natsVal hs, natVal o)
 
 -- test :: forall n m r. Wit (KnownNat n) -> Wit (KnownNat m) -> (KnownNat (n + m) => r) -> r
 -- test x y f = case x %+ y of

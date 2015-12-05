@@ -9,6 +9,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE PolyKinds                  #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TypeOperators              #-}
@@ -21,6 +22,7 @@ import Control.Applicative
 import Control.DeepSeq
 import Data.Bifunctor
 import Data.List
+import Data.Reflection
 import Data.Neural.Types
 import Data.Neural.Utility
 import Data.Proxy
@@ -41,6 +43,11 @@ data Network :: Nat -> [Nat] -> Nat -> *
 
 infixr 5 `NetIL`
 
+data SomeNet :: * -> * where
+    SomeNet :: (KnownNat i, KnownNat o) => Network i hs o a -> SomeNet a
+
+data OpaqueNet :: Nat -> Nat -> * -> * where
+    OpaqueNet :: (KnownNat i, KnownNat o) => Network i hs o a -> OpaqueNet i o a
 
 runNetwork :: forall i hs o a. (KnownNat i, Num a) => (a -> a) -> (a -> a) -> Network i hs o a -> V i a -> V o a
 runNetwork f g = go
@@ -73,7 +80,8 @@ trainSample step f g x0 y n0 = snd $ go x0 n0
               (delta, ln')   = unzipV $ liftA3 (adjustOutput xb) ln y d
               -- drop contrib from bias term
               deltaws        :: V j a
-              deltaws        = delta *! (nodeWeights <$> ln')
+              -- deltaws        = delta *! (nodeWeights <$> ln')
+              deltaws        = delta *! (nodeWeights <$> ln)
               l'             :: FLayer j o a
               l'             = FLayer ln'
           in  (deltaws, NetOL l')
@@ -89,7 +97,8 @@ trainSample step f g x0 y n0 = snd $ go x0 n0
               ln' :: V k (Node j a)
               (delta, ln')         = unzipV $ liftA3 (adjustHidden xb) ln deltaos d
               deltaws :: V j a
-              deltaws              = delta *! (nodeWeights <$> ln')
+              -- deltaws              = delta *! (nodeWeights <$> ln')
+              deltaws              = delta *! (nodeWeights <$> ln)
               l' :: FLayer j k a
               l'                   = FLayer ln'
           in  (deltaws, l' `NetIL` n'')
@@ -242,6 +251,7 @@ instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Network i '[] o a) wh
     put (NetOL l) = B.put l
     get = NetOL <$> B.get
 
+-- instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
 instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
     put (NetIL l n') = B.put l *> B.put n'
     get = NetIL <$> B.get <*> B.get
@@ -253,4 +263,61 @@ instance NFData a => NFData (Network i hs o a) where
 deriving instance Show a => Show (Network i hs o a)
 deriving instance Foldable (Network i hs o)
 deriving instance Traversable (Network i hs o)
+
+
+deriving instance Show a => Show (SomeNet a)
+deriving instance Functor SomeNet
+deriving instance Foldable SomeNet
+deriving instance Traversable SomeNet
+
+instance B.Binary a => B.Binary (SomeNet a) where
+    put sn = case sn of
+               SomeNet (n :: Network i hs o a) -> do
+                 B.put $ natVal (Proxy :: Proxy i)
+                 B.put $ natVal (Proxy :: Proxy o)
+                 B.put $ OpaqueNet n
+    get = do
+      i <- B.get
+      o <- B.get
+      reifyNat i $ \(Proxy :: Proxy i) ->
+        reifyNat o $ \(Proxy :: Proxy o) -> do
+          oqn <- B.get :: B.Get (OpaqueNet i o a)
+          return $ case oqn of
+                     OpaqueNet n -> SomeNet n
+
+deriving instance Show a => Show (OpaqueNet i o a)
+deriving instance Functor (OpaqueNet i o)
+deriving instance Foldable (OpaqueNet i o)
+deriving instance Traversable (OpaqueNet i o)
+
+instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (OpaqueNet i o a) where
+    put oqn = case oqn of
+                OpaqueNet n -> do
+                  case n of
+                    NetOL l -> do
+                      B.put True
+                      B.put l
+                    NetIL (l :: FLayer i j a) (n' :: Network j js o a) -> do
+                      B.put False
+                      B.put $ natVal (Proxy :: Proxy j)
+                      B.put l
+                      B.put (OpaqueNet n')
+    get = do
+      isOL <- B.get
+      if isOL
+        then do
+          OpaqueNet . NetOL <$> B.get
+        else do
+          j <- B.get
+          reifyNat j $ \(Proxy :: Proxy j) -> do
+            l   <- B.get :: B.Get (FLayer i j a)
+            nqo <- B.get :: B.Get (OpaqueNet j o a)
+            return $ case nqo of
+              OpaqueNet n -> OpaqueNet $ l `NetIL` n
+
+asOpaqueNet :: SomeNet a
+            -> (forall i o. (KnownNat i, KnownNat o) => OpaqueNet i o a -> r)
+            -> r
+asOpaqueNet sn f = case sn of
+                     SomeNet n -> f (OpaqueNet n)
 

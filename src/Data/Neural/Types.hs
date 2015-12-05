@@ -20,17 +20,21 @@ module Data.Neural.Types where
 import Control.Applicative
 import Control.Arrow
 import Control.DeepSeq
+import Type.Class.Known
 import Control.Monad.Trans.State
 import Data.Foldable
+import GHC.TypeLits.List
 import Data.Monoid
 import Data.Proxy
+import Data.Reflection
+import Data.Type.Product
 import GHC.Generics
 import GHC.TypeLits
 import Linear
 import Linear.V
 import System.Random
-import qualified Data.Binary     as B
-import qualified Data.Vector     as V
+import qualified Data.Binary      as B
+import qualified Data.Vector      as V
 
 -- | Types
 
@@ -43,7 +47,22 @@ newtype FLayer :: Nat -> Nat -> * -> * where
   deriving (Show, Foldable, Traversable, Functor, Generic)
 
 data NeuralActs :: * -> * where
-  NA :: { naInner :: a -> a, naOuter :: a -> a } -> NeuralActs a
+    NA :: { naInner :: a -> a, naOuter :: a -> a } -> NeuralActs a
+
+data SomeFLayer :: * -> * where
+    SomeFLayer :: (KnownNat i, KnownNat o) => FLayer i o a -> SomeFLayer a
+
+data NetStruct :: * where
+    NetStruct :: (KnownNat i, KnownNat o, KnownNats hs)
+              => Proxy i
+              -> Prod Proxy hs
+              -> Proxy o
+              -> NetStruct
+
+type KnownNet i hs o = (KnownNat i, KnownNats hs, Known (Prod Proxy) hs, KnownNat o)
+
+-- deriving instance Show NetStruct
+
 
 -- | Class
 
@@ -154,9 +173,27 @@ instance (KnownNat i, KnownNat o) => Applicative (FLayer i o) where
 
 deriving instance (KnownNat i, KnownNat o, Random a) => Random (FLayer i o a)
 
--- runLayer :: (KnownNat i, Num a) => Layer i o a -> V i a -> V o a
--- runLayer (Layer l) v = l !* Node 1 v
--- {-# INLINE runLayer #-}
+-- | * SomeFLayer
+
+deriving instance Show a => Show (SomeFLayer a)
+deriving instance Functor SomeFLayer
+deriving instance Foldable SomeFLayer
+deriving instance Traversable SomeFLayer
+
+instance B.Binary a => B.Binary (SomeFLayer a) where
+    put sl = case sl of
+               SomeFLayer (l :: FLayer i o a) -> do
+                 B.put $ natVal (Proxy :: Proxy i)
+                 B.put $ natVal (Proxy :: Proxy o)
+                 B.put l
+    get = do
+      i <- B.get
+      o <- B.get
+      reifyNat i $ \(Proxy :: Proxy i) ->
+        reifyNat o $ \(Proxy :: Proxy o) ->
+          SomeFLayer <$> (B.get :: B.Get (FLayer i o a))
+
+
 
 
 -- | * Network
