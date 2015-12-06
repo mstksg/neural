@@ -50,11 +50,7 @@ data RLayer :: Nat -> Nat -> * -> * where
               } -> RLayer i o a
   deriving (Show, Functor, Foldable, Traversable, Generic)
 
-data Network :: Nat -> [Nat] -> Nat -> * -> * where
-    NetOL :: !(FLayer i o a) -> Network i '[] o a
-    NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
-
-infixr 5 `NetIL`
+type Network = NetworkG RLayer
 
 data SomeNet :: * -> * where
     SomeNet :: (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Network i hs o a -> SomeNet a
@@ -218,7 +214,7 @@ runNetFeedbackM_ na nxt = go
                  vs <- go n' (i - 1) =<< nxt v'
                  return $ v' : vs
 
-randomNetwork :: (MonadRandom m, Random (Network i hs o a), Num a)
+randomNetwork :: (MonadRandom m, Random (Network i hs o a), KnownNet i hs o, Num a)
               => m (Network i hs o a)
 randomNetwork = fmap (subtract 1 . (*2)) <$> getRandom
 
@@ -293,63 +289,7 @@ seriesErrorS na = foldM f 0
 
 -- | Boilerplate instances
 
-instance Functor (Network i hs o) where
-    fmap f n = case n of
-                 NetOL l -> NetOL (fmap f l)
-                 NetIL l n' -> fmap f l `NetIL` fmap f n'
-    {-# INLINE fmap #-}
-
--- instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Applicative (Network i hs o) where
-
-instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Applicative (Network i hs o) where
-    pure x = case known :: Prod Proxy hs of
-               Ø      -> NetOL (pure x)
-               _ :< _ -> pure x `NetIL` pure x
-    NetOL f     <*> NetOL x = NetOL (f <*> x)
-    NetIL fi fr <*> NetIL xi xr = NetIL (fi <*> xi) (fr <*> xr)
-    _           <*> _           = error "this should never happen"
-    {-# INLINE (<*>) #-}
-
-instance Applicative (Network i hs o) => Additive (Network i hs o) where
-    zero = pure 0
-    {-# INLINE zero #-}
-    (^+^) = liftA2 (+)
-    {-# INLINE (^+^) #-}
-    (^-^) = liftA2 (-)
-    {-# INLINE (^-^) #-}
-    liftU2 = liftA2
-    {-# INLINE liftU2 #-}
-    liftI2 = liftA2
-    {-# INLINE liftI2 #-}
-
-instance (Applicative (Network i hs o)) => Metric (Network i hs o)
-
-instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, Random a) => Random (Network i hs o a) where
-    random = runState $ do
-      case known :: Prod Proxy hs of
-        Ø      -> NetOL <$> state random
-        _ :< _ -> NetIL <$> state random <*> state random
-    randomR rng = runState $ do
-      case rng of
-        (NetOL rmn, NetOL rmx)         -> NetOL <$> state (randomR (rmn, rmx))
-        (NetIL lmn nmn, NetIL lmx nmx) -> NetIL <$> state (randomR (lmn, lmx))
-                                                <*> state (randomR (nmn, nmx))
-        (_, _)                         -> error "impossible!"
-
-instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, B.Binary a) => B.Binary (Network i hs o a) where
-    put (NetOL l)    = B.put l
-    put (NetIL l n') = B.put l *> B.put n'
-    get = case known :: Prod Proxy hs of
-            Ø      -> NetOL <$> B.get
-            _ :< _ -> NetIL <$> B.get <*> B.get
-
-instance NFData a => NFData (Network i hs o a) where
-    rnf (NetOL (force -> !_)) = ()
-    rnf (NetIL (force -> !_) (force -> !_)) = ()
-
 deriving instance Show a => Show (Network i hs o a)
-deriving instance Foldable (Network i hs o)
-deriving instance Traversable (Network i hs o)
 
 instance (KnownNat i, KnownNat s) => Nudges (RNode i s) where
     nudges f (RNode b i s) = RNode (RNode (f b) i s)
@@ -442,32 +382,3 @@ randomNetworkFrom _ hs o =
         n <- randomNetworkFrom j js o
         return $ l `NetIL` n
 
--- netApplicative :: (KnownNat i, KnownNats hs, KnownNat o)
---                => Proxy i
---                -> Prod Proxy hs
---                -> Proxy o
---                -> Dict (Applicative (Network i hs o))
--- netApplicative _ hs o = case hs of
---                           Ø       -> Dict
---                           j :< js -> case netApplicative j js o of
---                                        Dict -> Dict
-
--- netInstance :: forall i hs o f n. (KnownNat i, KnownNats hs, KnownNat o)
---             => (forall i'. (KnownNat i', KnownNat o) :- f (n i' '[] o))
---             -> (forall i' j js. (KnownNat i', KnownNat j, KnownNat o, f (n j js o)) :- f (n i' (j ': js) o))
---             -> Proxy i
---             -> Prod Proxy hs
---             -> Proxy o
---             -> Dict (f (n i hs o))
--- netInstance eBase eRec = go
---   where
---     go :: forall i' hs'. (KnownNat i', KnownNats hs')
---        => Proxy i'
---        -> Prod Proxy hs'
---        -> Proxy o
---        -> Dict (f (n i' hs' o))
---     go _ hs o = case hs of
---                   Ø -> Dict \\ (eBase :: (KnownNat i', KnownNat o) :- f (n i' '[] o))
---                   (j :: Proxy j) :< (js :: Prod Proxy js) ->
---                     case go j js o of
---                       Dict -> Dict \\ (eRec :: (KnownNat i', KnownNat j, KnownNat o, f (n j js o)) :- f (n i' (j ': js) o))

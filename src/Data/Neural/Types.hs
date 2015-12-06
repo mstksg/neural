@@ -1,12 +1,16 @@
+{-# LANGUAGE BangPatterns               #-}
+{-# LANGUAGE ViewPatterns               #-}
 {-# LANGUAGE ConstraintKinds            #-}
 {-# LANGUAGE DataKinds                  #-}
 {-# LANGUAGE DeriveFoldable             #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE DeriveTraversable          #-}
 {-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures             #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE PolyKinds                  #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
@@ -20,21 +24,22 @@ module Data.Neural.Types where
 import Control.Applicative
 import Control.Arrow
 import Control.DeepSeq
-import Type.Class.Known
 import Control.Monad.Trans.State
+import Data.Constraint
 import Data.Foldable
-import GHC.TypeLits.List
 import Data.Monoid
 import Data.Proxy
 import Data.Reflection
 import Data.Type.Product
 import GHC.Generics
 import GHC.TypeLits
+import GHC.TypeLits.List
 import Linear
 import Linear.V
 import System.Random
-import qualified Data.Binary      as B
-import qualified Data.Vector      as V
+import Type.Class.Known
+import qualified Data.Binary     as B
+import qualified Data.Vector     as V
 
 -- | Types
 
@@ -49,6 +54,13 @@ newtype FLayer :: Nat -> Nat -> * -> * where
 data NeuralActs :: * -> * where
     NA :: { naInner :: a -> a, naOuter :: a -> a } -> NeuralActs a
 
+data NetworkG :: (Nat -> Nat -> * -> *) -> Nat -> [Nat] -> Nat -> * -> * where
+    NetOL :: !(FLayer i o a) -> NetworkG l i '[] o a
+    NetIL :: KnownNat j => !(l i j a) -> !(NetworkG l j hs o a) -> NetworkG l i (j ': hs) o a
+
+infixr 5 `NetIL`
+
+
 data SomeFLayer :: * -> * where
     SomeFLayer :: (KnownNat i, KnownNat o) => FLayer i o a -> SomeFLayer a
 
@@ -60,6 +72,13 @@ data NetStruct :: * where
               -> NetStruct
 
 type KnownNet i hs o = (KnownNat i, KnownNats hs, Known (Prod Proxy) hs, KnownNat o)
+
+class OnNats (f :: (* -> *) -> Constraint) (l :: Nat -> Nat -> * -> *) where
+    onNats :: (KnownNat i, KnownNat o) => Dict (f (l i o))
+
+class OnNats0 (f :: * -> Constraint) (l :: Nat -> Nat -> * -> *) (a :: *) where
+    onNats0 :: (KnownNat i, KnownNat o) => Dict (f (l i o a))
+
 
 -- deriving instance Show NetStruct
 
@@ -173,6 +192,10 @@ instance (KnownNat i, KnownNat o) => Applicative (FLayer i o) where
 
 deriving instance (KnownNat i, KnownNat o, Random a) => Random (FLayer i o a)
 
+instance OnNats Functor FLayer where
+    onNats = Dict
+
+
 -- | * SomeFLayer
 
 deriving instance Show a => Show (SomeFLayer a)
@@ -195,50 +218,94 @@ instance B.Binary a => B.Binary (SomeFLayer a) where
 
 
 
-
 -- | * Network
 
--- fmapNetwork :: forall a b l i hs o.
---                (forall a' b' i' o'. (a' -> b') -> l i' o' a' -> l i' o' b')
---             -> (a -> b)
---             -> Network l i hs o a
---             -> Network l i hs o b
--- fmapNetwork f g = go
---   where
---     go :: forall i' hs' o'. Network l i' hs' o' a -> Network l i' hs' o' b
---     go n = case n of
---              NetOL l    -> NetOL (f g l)
---              NetIL l n' -> NetIL (f g l) (go n')
 
--- pureNetworkO :: forall a l i o.
---                 (forall a'. a' -> l i o a')
---              -> a -> Network l i '[] o a
--- pureNetworkO p = NetOL . p
+instance (OnNats Functor l, KnownNet i hs o) => Functor (NetworkG l i hs o) where
+    fmap f n = case n of
+                 NetOL l                 ->
+                   NetOL (fmap f l)
+                 NetIL (l :: l i j a) n' ->
+                   case onNats :: Dict (Functor (l i j)) of
+                     Dict -> fmap f l `NetIL` fmap f n'
 
--- apNetworkO :: forall a b l i o.
---               (forall a' b'. l i o (a' -> b') -> l i o a' -> l i o b')
---            -> Network l i '[] o (a -> b)
---            -> Network l i '[] o a
---            -> Network l i '[] o b
--- apNetworkO p (NetOL f) (NetOL x) = NetOL (p f x)
+instance (OnNats Functor l, OnNats Applicative l, KnownNet i hs o) => Applicative (NetworkG l i hs o) where
+    pure x = case known :: Prod Proxy hs of
+               Ø        -> NetOL (pure x)
+               (_ :: Proxy j) :< _
+                 -> case onNats :: Dict (Applicative (l i j)) of
+                      Dict -> pure x `NetIL` pure x
+    {-# INLINE pure #-}
+    NetOL f <*> NetOL x = NetOL (f <*> x)
+    NetIL (fi :: l i j (a -> b)) fr <*> NetIL xi xr =
+      case onNats :: Dict (Applicative (l i j)) of
+        Dict -> NetIL (fi <*> xi) (fr <*> xr)
+    _           <*> _           = error "this should never happen"
+    {-# INLINE (<*>) #-}
 
--- pureNetworkI :: forall a l i h hs o. KnownNat h
---              => (forall a'. a' -> l i h a')
---              -> (forall a'. a' -> Network l h hs o a')
---              -> a
---              -> Network l i (h ': hs) o a
--- pureNetworkI p pN x = p x `NetIL` pN x
+instance Applicative (NetworkG l i hs o) => Additive (NetworkG l i hs o) where
+    zero = pure 0
+    {-# INLINE zero #-}
+    (^+^) = liftA2 (+)
+    {-# INLINE (^+^) #-}
+    (^-^) = liftA2 (-)
+    {-# INLINE (^-^) #-}
+    liftU2 = liftA2
+    {-# INLINE liftU2 #-}
+    liftI2 = liftA2
+    {-# INLINE liftI2 #-}
 
--- apNetworkI :: forall a b l i h hs o.
---               (forall a' b'. l i h (a' -> b') -> l i h a' -> l i h b')
---            -> (forall a' b'. Network l h hs o (a' -> b') -> Network l h hs o a' -> Network l h hs o b')
---            -> Network l i (h ': hs) o (a -> b)
---            -> Network l i (h ': hs) o a
---            -> Network l i (h ': hs) o b
--- apNetworkI a aN (NetIL l n) (NetIL l' n') = NetIL (a l l') (aN n n')
+instance (OnNats Functor l, OnNats Applicative l, OnNats Foldable l, KnownNet i hs o) => Metric (NetworkG l i hs o)
 
--- instance (KnownNat i, KnownNat o, Random a) => Random (Network i '[] o a) where
---     random = first OLayer . random
---     randomR (OLayer rmn, OLayer rmx) = first OLayer . randomR (rmn, rmx)
+instance (OnNats Foldable l, KnownNet i hs o) => Foldable (NetworkG l i hs o) where
+    foldMap f n = case n of
+                    NetOL l    -> foldMap f l
+                    NetIL (l :: l i j a) n' ->
+                      case onNats :: Dict (Foldable (l i j)) of
+                        Dict -> foldMap f l <> foldMap f n'
 
+instance (OnNats Functor l, OnNats Foldable l, OnNats Traversable l, KnownNet i hs o) => Traversable (NetworkG l i hs o) where
+    traverse f n = case n of
+                     NetOL l -> NetOL <$> traverse f l
+                     NetIL (l :: l i j a) n' ->
+                       case onNats :: Dict (Traversable (l i j)) of
+                         Dict -> NetIL <$> traverse f l <*> traverse f n'
+
+instance (OnNats0 Random l a, OnNats Functor l, OnNats Applicative l, OnNats Foldable l, OnNats Traversable l, Random a, KnownNet i hs o) => Random (NetworkG l i hs o a) where
+    random = runState $
+      case known :: Prod Proxy hs of
+        Ø                   ->
+          NetOL <$> state random
+        (_ :: Proxy j) :< _ ->
+          case onNats0 :: Dict (Random (l i j a)) of
+             Dict -> NetIL <$> state random <*> state random
+    randomR rng = runState $
+      case rng of
+        (NetOL rmn, NetOL rmx)         -> NetOL <$> state (randomR (rmn, rmx))
+        (NetIL (lmn :: l i j a) nmn, NetIL lmx nmx) ->
+          case onNats0 :: Dict (Random (l i j a)) of
+            Dict -> NetIL <$> state (randomR (lmn, lmx))
+                          <*> state (randomR (nmn, nmx))
+        (_, _) -> error "impossible!"
+
+instance (B.Binary a, OnNats0 B.Binary l a, KnownNet i hs o) => B.Binary (NetworkG l i hs o a) where
+    put n = case n of
+              NetOL l -> B.put l
+              NetIL (l :: l i j a) n' ->
+                case onNats0 :: Dict (B.Binary (l i j a)) of
+                  Dict -> B.put l *> B.put n'
+    get = case known :: Prod Proxy hs of
+            Ø -> NetOL <$> B.get
+            (_ :: Proxy j) :< _ ->
+              case onNats0 :: Dict (B.Binary (l i j a)) of
+                Dict -> NetIL <$> B.get <*> B.get
+
+instance (OnNats0 NFData l a, NFData a, KnownNet i hs o) => NFData (NetworkG l i hs o a) where
+    rnf n = case n of
+              NetOL l -> l `deepseq` ()
+              NetIL (l :: l i j a) n' ->
+                case onNats0 :: Dict (NFData (l i j a)) of
+                  Dict -> l `deepseq` n' `deepseq` ()
+
+-- deriving instance Show a => Show (NetworkG l i hs o a)
 
