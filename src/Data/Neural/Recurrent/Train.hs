@@ -26,6 +26,7 @@ import Data.Neural.Types
 import Data.Neural.Utility
 import GHC.Generics
 import GHC.TypeLits
+import GHC.TypeLits.List
 import Linear
 import Linear.V
 import Numeric.AD.Rank1.Forward
@@ -42,21 +43,31 @@ instance (KnownNat i, KnownNat o) => Applicative (RLayerU i o) where
 
 data NetworkU :: Nat -> [Nat] -> Nat -> * -> * where
     NetUOL :: !(FLayer i o a) -> NetworkU i '[] o a
-    NetUIL :: KnownNat j => !(RLayerU i j a) -> !(NetworkU j hs o a) -> NetworkU i (j ': hs) o a
+    NetUIL :: (KnownNat j, KnownNats hs) => !(RLayerU i j a) -> !(NetworkU j hs o a) -> NetworkU i (j ': hs) o a
 
 deriving instance Functor (NetworkU i hs o)
 
-instance (KnownNat i, KnownNat o) => Applicative (NetworkU i '[] o) where
-    pure = NetUOL . pure
+instance (KnownNet i hs o) => Applicative (NetworkU i hs o) where
+    pure x = case natsList :: NatList hs of
+               ØNL     -> NetUOL (pure x)
+               _ :<# _ -> pure x `NetUIL` pure x
     {-# INLINE pure #-}
-    NetUOL f <*> NetUOL x = NetUOL (f <*> x)
+    NetUOL f     <*> NetUOL x     = NetUOL (f <*> x)
+    NetUIL fi fr <*> NetUIL xi xr = NetUIL (fi <*> xi) (fr <*> xr)
+    _            <*> _            = error "this should never happen"
     {-# INLINE (<*>) #-}
 
-instance (KnownNat i, KnownNat o, KnownNat j, Applicative (NetworkU j hs o)) => Applicative (NetworkU i (j ': hs) o) where
-    pure x = pure x `NetUIL` pure x
-    {-# INLINE pure #-}
-    NetUIL fi fr <*> NetUIL xi xr = NetUIL (fi <*> xi) (fr <*> xr)
-    {-# INLINE (<*>) #-}
+-- instance (KnownNat i, KnownNat o) => Applicative (NetworkU i '[] o) where
+--     pure = NetUOL . pure
+--     {-# INLINE pure #-}
+--     NetUOL f <*> NetUOL x = NetUOL (f <*> x)
+--     {-# INLINE (<*>) #-}
+
+-- instance (KnownNat i, KnownNat o, KnownNat j, Applicative (NetworkU j hs o)) => Applicative (NetworkU i (j ': hs) o) where
+--     pure x = pure x `NetUIL` pure x
+--     {-# INLINE pure #-}
+--     NetUIL fi fr <*> NetUIL xi xr = NetUIL (fi <*> xi) (fr <*> xr)
+--     {-# INLINE (<*>) #-}
 
 instance NFData a => NFData (NetworkU i hs o a) where
     rnf (NetUOL (force -> !_)) = ()
@@ -74,7 +85,7 @@ data Deltas :: Nat -> [Nat] -> Nat -> * -> * where
 
 data NetStates :: Nat -> [Nat] -> Nat -> * -> * where
     NetSOL :: NetStates i '[] o a
-    NetSIL :: KnownNat j => !(V j a) -> !(NetStates j hs o a) -> NetStates i (j ': hs) o a
+    NetSIL :: (KnownNat j, KnownNats hs) => !(V j a) -> !(NetStates j hs o a) -> NetStates i (j ': hs) o a
 
 instance NFData a => NFData (NetStates i hs o a) where
     rnf NetSOL = ()
@@ -240,18 +251,19 @@ trainSeries (NA f g) step stepS ios0 n0 =
         go nu x ns ds =
           case nu of
             NetUOL l@(FLayer ln) ->
-              let d              :: V o a
-                  d              = runFLayer l x
-                  delta          :: V o a
-                  ln'            :: V o (Node j a)
-                  (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
-                  -- drop contrib from bias term
-                  deltaws        :: V j a
-                  -- deltaws        = delta *! (nodeWeights <$> ln')
-                  deltaws        = delta *! (nodeWeights <$> ln)
-                  l'             :: FLayer j o a
-                  l'             = FLayer shft
-              in  (DeltasOL deltaws, NetUOL l')
+              (DeltasOL (pure 0), NetUOL (pure 0))
+              -- let d              :: V o a
+              --     d              = runFLayer l x
+              --     delta          :: V o a
+              --     ln'            :: V o (Node j a)
+              --     (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
+              --     -- drop contrib from bias term
+              --     deltaws        :: V j a
+              --     -- deltaws        = delta *! (nodeWeights <$> ln')
+              --     deltaws        = delta *! (nodeWeights <$> ln)
+              --     l'             :: FLayer j o a
+              --     l'             = FLayer shft
+              -- in  (DeltasOL deltaws, NetUOL l')
             NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
               case ns of
                 NetSIL s ns' ->

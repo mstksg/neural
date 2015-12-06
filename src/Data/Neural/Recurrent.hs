@@ -52,15 +52,15 @@ data RLayer :: Nat -> Nat -> * -> * where
 
 data Network :: Nat -> [Nat] -> Nat -> * -> * where
     NetOL :: !(FLayer i o a) -> Network i '[] o a
-    NetIL :: KnownNat j => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
+    NetIL :: (KnownNat j, KnownNats hs) => !(RLayer i j a) -> !(Network j hs o a) -> Network i (j ': hs) o a
 
 infixr 5 `NetIL`
 
 data SomeNet :: * -> * where
-    SomeNet :: (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Network i hs o a -> SomeNet a
+    SomeNet :: KnownNet i hs o => Network i hs o a -> SomeNet a
 
 data OpaqueNet :: Nat -> Nat -> * -> * where
-    OpaqueNet :: (KnownNats hs, Known (Prod Proxy) hs) => Network i hs o a -> OpaqueNet i o a
+    OpaqueNet :: KnownNats hs => Network i hs o a -> OpaqueNet i o a
 
 
 instance Functor (RNode i s) where
@@ -301,11 +301,12 @@ instance Functor (Network i hs o) where
 
 -- instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Applicative (Network i hs o) where
 
-instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) => Applicative (Network i hs o) where
-    pure x = case known :: Prod Proxy hs of
-               Ø      -> NetOL (pure x)
-               _ :< _ -> pure x `NetIL` pure x
-    NetOL f     <*> NetOL x = NetOL (f <*> x)
+instance (KnownNet i hs o) => Applicative (Network i hs o) where
+    pure x = case natsList :: NatList hs of
+               ØNL     -> NetOL (pure x)
+               _ :<# _ -> pure x `NetIL` pure x
+    {-# INLINE pure #-}
+    NetOL f     <*> NetOL x     = NetOL (f <*> x)
     NetIL fi fr <*> NetIL xi xr = NetIL (fi <*> xi) (fr <*> xr)
     _           <*> _           = error "this should never happen"
     {-# INLINE (<*>) #-}
@@ -324,11 +325,11 @@ instance Applicative (Network i hs o) => Additive (Network i hs o) where
 
 instance (Applicative (Network i hs o)) => Metric (Network i hs o)
 
-instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, Random a) => Random (Network i hs o a) where
+instance (KnownNet i hs o, Random a) => Random (Network i hs o a) where
     random = runState $ do
-      case known :: Prod Proxy hs of
-        Ø      -> NetOL <$> state random
-        _ :< _ -> NetIL <$> state random <*> state random
+      case natsList :: NatList hs of
+        ØNL     -> NetOL <$> state random
+        _ :<# _ -> NetIL <$> state random <*> state random
     randomR rng = runState $ do
       case rng of
         (NetOL rmn, NetOL rmx)         -> NetOL <$> state (randomR (rmn, rmx))
@@ -339,9 +340,9 @@ instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, Random a)
 instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, B.Binary a) => B.Binary (Network i hs o a) where
     put (NetOL l)    = B.put l
     put (NetIL l n') = B.put l *> B.put n'
-    get = case known :: Prod Proxy hs of
-            Ø      -> NetOL <$> B.get
-            _ :< _ -> NetIL <$> B.get <*> B.get
+    get = case natsList :: NatList hs of
+            ØNL     -> NetOL <$> B.get
+            _ :<# _ -> NetIL <$> B.get <*> B.get
 
 instance NFData a => NFData (Network i hs o a) where
     rnf (NetOL (force -> !_)) = ()
@@ -429,18 +430,18 @@ asOpaqueNet :: SomeNet a
 asOpaqueNet sn f = case sn of
                      SomeNet n -> f (OpaqueNet n)
 
-randomNetworkFrom :: (KnownNat i, KnownNats hs, KnownNat o, MonadRandom m, Random a, Num a)
-                  => Proxy i
-                  -> Prod Proxy hs
-                  -> Proxy o
-                  -> m (Network i hs o a)
-randomNetworkFrom _ hs o =
-    case hs of
-      Ø       -> NetOL . fmap (subtract 1 . (*2)) <$> getRandom
-      j :< js -> do
-        l <- fmap (subtract 1 . (*2)) <$> getRandom
-        n <- randomNetworkFrom j js o
-        return $ l `NetIL` n
+-- randomNetworkFrom :: (KnownNat i, KnownNats hs, KnownNat o, MonadRandom m, Random a, Num a)
+--                   => Proxy i
+--                   -> Prod Proxy hs
+--                   -> Proxy o
+--                   -> m (Network i hs o a)
+-- randomNetworkFrom _ hs o =
+--     case hs of
+--       Ø       -> NetOL . fmap (subtract 1 . (*2)) <$> getRandom
+--       j :< js -> do
+--         l <- fmap (subtract 1 . (*2)) <$> getRandom
+--         n <- randomNetworkFrom j js o
+--         return $ l `NetIL` n
 
 -- netApplicative :: (KnownNat i, KnownNats hs, KnownNat o)
 --                => Proxy i

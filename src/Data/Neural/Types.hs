@@ -20,7 +20,6 @@ module Data.Neural.Types where
 import Control.Applicative
 import Control.Arrow
 import Control.DeepSeq
-import Type.Class.Known
 import Control.Monad.Trans.State
 import Data.Foldable
 import GHC.TypeLits.List
@@ -53,13 +52,13 @@ data SomeFLayer :: * -> * where
     SomeFLayer :: (KnownNat i, KnownNat o) => FLayer i o a -> SomeFLayer a
 
 data NetStruct :: * where
-    NetStruct :: (KnownNat i, KnownNat o, KnownNats hs)
+    NetStruct :: KnownNet i hs o
               => Proxy i
               -> Prod Proxy hs
               -> Proxy o
               -> NetStruct
 
-type KnownNet i hs o = (KnownNat i, KnownNats hs, Known (Prod Proxy) hs, KnownNat o)
+type KnownNet i hs o = (KnownNat i, KnownNats hs, KnownNat o)
 
 -- deriving instance Show NetStruct
 
