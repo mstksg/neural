@@ -1,6 +1,5 @@
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE DeriveFoldable      #-}
 {-# LANGUAGE DeriveFunctor       #-}
 {-# LANGUAGE DeriveGeneric       #-}
@@ -9,6 +8,8 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TupleSections       #-}
@@ -21,6 +22,7 @@ import Control.Applicative
 import Control.DeepSeq
 import Control.Monad.Random
 import Control.Monad.State.Strict
+import Data.Functor.Identity
 import Data.Neural.Recurrent
 import Data.Neural.Types
 import Data.Neural.Utility
@@ -131,6 +133,18 @@ runNetworkU (NA f g) = go
                       _ -> error "impossible.  n and ns should be same constructors."
 {-# INLINE runNetworkU #-}
 
+tNetULayers :: forall i hs o o' a b f. (Applicative f)
+            => (forall j. FLayer j o a -> f (FLayer j o' b))
+            -> (forall i' j. RLayerU i' j a -> f (RLayerU i' j b))
+            -> NetworkU i hs o a
+            -> f (NetworkU i hs o' b)
+tNetULayers f g = go
+  where
+    go :: forall j js. NetworkU j js o a -> f (NetworkU j js o' b)
+    go n = case n of
+             NetUOL l    -> NetUOL <$> f l
+             NetUIL l n' -> NetUIL <$> g l <*> go n'
+
 toNetworkU :: Network i hs o a -> (NetStates i hs o a, NetworkU i hs o a)
 toNetworkU n = case n of
                  NetOL l    -> (NetSOL, NetUOL l)
@@ -158,7 +172,11 @@ trainSeries (NA f g) step stepS ios0 n0 =
                              -- differences...add the steps?
                              -- hm, not clear which one is better.
                              -- nuTot = (* (step / fromIntegral n)) <$> foldl'' (liftA2 (+)) (pure 0) nus
-                             nuTot = (* (step / fromIntegral n)) <$> nus
+                             nuTot = runIdentity
+                                   . tNetULayers (Identity . fmap (* step))
+                                                 (Identity . fmap (* (step / fromIntegral n)))
+                                   $ nus
+                             -- nuTot = (* (step / fromIntegral n)) <$> nus
                              nuFin = liftA2 (-) nu0 nuTot
                          in  trainStates nuFin ns0 ds
   where
@@ -278,7 +296,8 @@ trainSeries (NA f g) step stepS ios0 n0 =
                           -- deltaos from inputs only, not state
                           deltaos' :: V k a
                           deltaos' = case deltaos of            -- yeaa :D
-                                       DeltasOL dos     -> dos ^+^ delS
+                                       -- DeltasOL dos     -> dos ^+^ delS
+                                       DeltasOL _       -> delS
                                        DeltasIL dos _ _ -> dos ^+^ delS
                           delta :: V k a
                           ln' :: V k (RNode j k a)

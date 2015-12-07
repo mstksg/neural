@@ -56,6 +56,12 @@ data Network :: Nat -> [Nat] -> Nat -> * -> * where
 
 infixr 5 `NetIL`
 
+data NetActs :: Nat -> [Nat] -> Nat -> * -> * where
+    NetAOL :: !(V o a) -> NetActs i hs o a
+    NetAIL :: (KnownNat j, KnownNats hs) => !(V j a) -> !(NetActs j hs o a) -> NetActs i (j ': js) o a
+
+infixr 5 `NetAIL`
+
 data SomeNet :: * -> * where
     SomeNet :: KnownNet i hs o => Network i hs o a -> SomeNet a
 
@@ -113,6 +119,11 @@ instance (KnownNat i, KnownNat o, Random a) => Random (RLayer i o a) where
     randomR (RLayer lmn smn, RLayer lmx smx) = runRand $
         RLayer <$> getRandomR (lmn, lmx) <*> getRandomR (smn, smx)
 
+instance NFData a => NFData (NetActs i hs o a) where
+    rnf (NetAOL (force -> !_)) = ()
+    rnf (NetAIL (force -> !_) (force -> !_)) = ()
+
+
 runRLayer :: forall i o a. (KnownNat i, KnownNat o, Num a)
           => (a -> a)
           -> RLayer i o a
@@ -137,10 +148,10 @@ runNetwork :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
            -> (V o a, Network i hs o a)
 runNetwork (NA f g) = go
   where
-    go :: forall i' hs' o'. (KnownNat i', KnownNat o')
-       => Network i' hs' o' a
+    go :: forall i' hs'. KnownNat i'
+       => Network i' hs' o a
        -> V i' a
-       -> (V o' a, Network i' hs' o' a)
+       -> (V o a, Network i' hs' o a)
     go n v = case n of
                NetOL l    -> (g <$> runFLayer l v, n)
                NetIL l nI -> let (v' , l')  = runRLayer f l v
@@ -155,6 +166,32 @@ runNetworkS :: (Num a, KnownNat i, KnownNat o, MonadState (Network i hs o a) m)
 runNetworkS na v = state (\n -> runNetwork na n v)
 {-# INLINE runNetworkS #-}
 
+runNetworkActs :: forall i hs o a. (KnownNat i, Num a)
+               => NeuralActs a
+               -> Network i hs o a
+               -> V i a
+               -> (NetActs i hs o a, Network i hs o a)
+runNetworkActs (NA f g) = go
+  where
+    go :: forall i' hs'. KnownNat i'
+       => Network i' hs' o a
+       -> V i' a
+       -> (NetActs i' hs' o a, Network i' hs' o a)
+    go n v = case n of
+               NetOL l    -> (NetAOL (g <$> runFLayer l v), n)
+               NetIL l nI -> let (v' , l') = runRLayer f l v
+                                 vRes      = f <$> v'
+                                 (nA, nI') = go nI vRes
+                             in  (NetAIL vRes nA, NetIL l' nI')
+{-# INLINE runNetworkActs #-}
+
+runNetworkActsS :: forall i hs o m a. (KnownNat i, Num a, MonadState (Network i hs o a) m)
+                => NeuralActs a
+                -> V i a
+                -> m (NetActs i hs o a)
+runNetworkActsS na v = state (\n -> runNetworkActs na n v)
+{-# INLINE runNetworkActsS #-}
+
 runNetStream :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
              => NeuralActs a
              -> Network i hs o a
@@ -163,7 +200,7 @@ runNetStream :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
 runNetStream na n vs = runState (mapM (runNetworkS na) vs) n
 {-# INLINE runNetStream #-}
 
-runNetStream_ :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
+runNetStream_ :: forall i hs o a. (Num a, KnownNat i, KnownNat o, NFData a)
               => NeuralActs a
               -> Network i hs o a
               -> [V i a]
@@ -172,9 +209,33 @@ runNetStream_ na = go
   where
     go :: Network i hs o a -> [V i a] -> [V o a]
     go n (v:vs) = let (u, n') = runNetwork na n v
-                  in  u : go n' vs
+                  in  u `deepseq` n' `deepseq` u : go n' vs
     go _ []     = []
 {-# INLINE runNetStream_ #-}
+
+runNetStreamActs :: forall i hs o a. (Num a, KnownNat i)
+                 => NeuralActs a
+                 -> Network i hs o a
+                 -> [V i a]
+                 -> ([NetActs i hs o a], Network i hs o a)
+runNetStreamActs na n vs = runState (mapM (runNetworkActsS na) vs) n
+{-# INLINE runNetStreamActs #-}
+
+
+runNetStreamActs_ :: forall i hs o a. (Num a, KnownNat i, NFData a)
+                  => NeuralActs a
+                  -> Network i hs o a
+                  -> [V i a]
+                  -> [NetActs i hs o a]
+runNetStreamActs_ na = go
+  where
+    go :: Network i hs o a -> [V i a] -> [NetActs i hs o a]
+    go n (v:vs) = let (u, n') = runNetworkActs na n v
+                  in  u `deepseq` n' `deepseq` u : go n' vs
+    go _ []     = []
+{-# INLINE runNetStreamActs_ #-}
+
+
 
 runNetFeedback :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
                => NeuralActs a
@@ -231,6 +292,7 @@ resetNetState n = runIdentity (tNetStates (\_ -> Identity (pure 0)) n)
 
 
 -- | Some traversals
+-- TODO: sharing with go
 
 tNetRLayers :: (Applicative f, KnownNat o)
             => (forall i' o'. KnownNat o' => RLayer i' o' a -> f (RLayer i' o' a))
@@ -256,6 +318,23 @@ tNetStates :: (Applicative f, KnownNat o)
            -> f (Network i hs o a)
 tNetStates f = tNetRLayers (tRLayerState f)
 {-# INLINE tNetStates #-}
+
+tNetOLayer :: (Functor f, KnownNat i)
+           => (forall j. KnownNat j => FLayer j o a -> f (FLayer j o' a))
+           -> Network i hs o a
+           -> f (Network i hs o' a)
+tNetOLayer f n = case n of
+                   NetOL l    -> NetOL   <$> f l
+                   NetIL l n' -> NetIL l <$> tNetOLayer f n'
+
+tNetLayers :: (Applicative f, KnownNat i)
+           => (forall j. KnownNat j => FLayer j o a -> f (FLayer j o' b))
+           -> (forall i' j. KnownNat j => RLayer i' j a -> f (RLayer i' j b))
+           -> Network i hs o a
+           -> f (Network i hs o' b)
+tNetLayers f g n = case n of
+                     NetOL l    -> NetOL <$> f l
+                     NetIL l n' -> NetIL <$> g l <*> tNetLayers f g n'
 
 
 -- | Validating
