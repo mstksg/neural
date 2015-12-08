@@ -171,12 +171,22 @@ trainSeries (NA f g) step stepS ios0 n0 =
                              -- maybe instead of averaging out the
                              -- differences...add the steps?
                              -- hm, not clear which one is better.
+                             --
+                             -- hey, considering not normalizing and just
+                             -- adding them all together, no average.
+                             -- because like, the steps might all be in
+                             -- different directions.  and also, things are
+                             -- supposed to diminish as you get further
+                             -- back so it doesnt make too much sense to
+                             -- weigh them equally with the initial
+                             -- changes.
                              -- nuTot = (* (step / fromIntegral n)) <$> foldl'' (liftA2 (+)) (pure 0) nus
-                             nuTot = runIdentity
-                                   . tNetULayers (Identity . fmap (* step))
-                                                 (Identity . fmap (* (step / fromIntegral n)))
-                                   $ nus
+                             -- nuTot = runIdentity
+                             --       . tNetULayers (Identity . fmap (* stepO))
+                             --                     (Identity . fmap (* (step / fromIntegral n)))
+                             --       $ nus
                              -- nuTot = (* (step / fromIntegral n)) <$> nus
+                             nuTot = (* step) <$> nus
                              nuFin = liftA2 (-) nu0 nuTot
                          in  trainStates nuFin ns0 ds
   where
