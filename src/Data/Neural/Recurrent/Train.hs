@@ -1,20 +1,21 @@
-{-# LANGUAGE BangPatterns        #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveFoldable      #-}
-{-# LANGUAGE DeriveFunctor       #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE DeriveTraversable   #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE FlexibleInstances   #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE PolyKinds           #-}
-{-# LANGUAGE RankNTypes          #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TupleSections       #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveFoldable       #-}
+{-# LANGUAGE DeriveFunctor        #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE DeriveTraversable    #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE PolyKinds            #-}
+{-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TupleSections        #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 module Data.Neural.Recurrent.Train where
 
@@ -22,7 +23,6 @@ import Control.Applicative
 import Control.DeepSeq
 import Control.Monad.Random
 import Control.Monad.State.Strict
-import Data.Functor.Identity
 import Data.Neural.Recurrent
 import Data.Neural.Types
 import Data.Neural.Utility
@@ -59,17 +59,18 @@ instance (KnownNet i hs o) => Applicative (NetworkU i hs o) where
     _            <*> _            = error "this should never happen"
     {-# INLINE (<*>) #-}
 
--- instance (KnownNat i, KnownNat o) => Applicative (NetworkU i '[] o) where
---     pure = NetUOL . pure
---     {-# INLINE pure #-}
---     NetUOL f <*> NetUOL x = NetUOL (f <*> x)
---     {-# INLINE (<*>) #-}
+instance Applicative (NetworkU i hs o) => Additive (NetworkU i hs o) where
+    zero = pure 0
+    {-# INLINE zero #-}
+    (^+^) = liftA2 (+)
+    {-# INLINE (^+^) #-}
+    (^-^) = liftA2 (-)
+    {-# INLINE (^-^) #-}
+    liftU2 = liftA2
+    {-# INLINE liftU2 #-}
+    liftI2 = liftA2
+    {-# INLINE liftI2 #-}
 
--- instance (KnownNat i, KnownNat o, KnownNat j, Applicative (NetworkU j hs o)) => Applicative (NetworkU i (j ': hs) o) where
---     pure x = pure x `NetUIL` pure x
---     {-# INLINE pure #-}
---     NetUIL fi fr <*> NetUIL xi xr = NetUIL (fi <*> xi) (fr <*> xr)
---     {-# INLINE (<*>) #-}
 
 instance NFData a => NFData (NetworkU i hs o a) where
     rnf (NetUOL (force -> !_)) = ()
@@ -154,64 +155,41 @@ toNetworkU n = case n of
                                in  (s', NetUIL l' n'')
 {-# INLINE toNetworkU #-}
 
-trainSeries :: forall i hs o a. (KnownNat i, KnownNat o, Fractional a, NFData a, Applicative (NetworkU i hs o))
+trainSeries :: forall i hs o a. (KnownNat i, KnownNat o, Fractional a, NFData a, Additive (NetworkU i hs o))
             => NeuralActs (Forward a)
             -> a
             -> a
-            -> [(V i a, V o a)]
+            -> V o a
+            -> [V i a]
             -> Network i hs o a
             -> Network i hs o a
-trainSeries _ _ _ [] n0 = n0
-trainSeries (NA f g) step stepS ios0 n0 =
-    case ios0 of
+trainSeries (NA f g) step stepS y inps0 n0 =
+    case inps0 of
       [] -> n0
-      (x0, y0) : ios' -> let (ds, nus, n) = goTS x0 ns0 y0 ios'
-                             -- is averaging really the best way?
-                             -- can we like, not?
-                             -- maybe instead of averaging out the
-                             -- differences...add the steps?
-                             -- hm, not clear which one is better.
-                             --
-                             -- hey, considering not normalizing and just
-                             -- adding them all together, no average.
-                             -- because like, the steps might all be in
-                             -- different directions.  and also, things are
-                             -- supposed to diminish as you get further
-                             -- back so it doesnt make too much sense to
-                             -- weigh them equally with the initial
-                             -- changes.
-                             -- nuTot = (* (step / fromIntegral n)) <$> foldl'' (liftA2 (+)) (pure 0) nus
-                             -- nuTot = runIdentity
-                             --       . tNetULayers (Identity . fmap (* stepO))
-                             --                     (Identity . fmap (* (step / fromIntegral n)))
-                             --       $ nus
-                             -- nuTot = (* (step / fromIntegral n)) <$> nus
-                             nuTot = (* step) <$> nus
-                             nuFin = liftA2 (-) nu0 nuTot
-                         in  trainStates nuFin ns0 ds
+      x0:xs -> let (ds, nuShifts, _) = goTS x0 ns0 xs
+                   nu1 = nu0 ^-^ step *^ nuShifts
+               in  trainStates nu1 ns0 ds
   where
     na'@(NA f_ _) = NA (fst . diff' f) (fst . diff' g)
     (ns0, nu0) = toNetworkU n0
     goTS :: V i a
          -> NetStates i hs o a
-         -> V o a
-         -> [(V i a, V o a)]
+         -> [V i a]
          -> (Deltas i hs o a, NetworkU i hs o a, Int)
-    goTS (force-> !x) (force-> !s) (force-> !y) ios =
-        case ios of
-          [] -> let (force-> !d, force-> !nu) = trainFinal y x s
-                in  (d, nu, 1)
-          ((x', y'):ios') ->
-            let (_ , s' ) = runNetworkU na' nu0 x s
-                (force-> !d , force-> !nus, force-> !i) = goTS x' s' y' ios'
+    goTS (force-> !x) (force-> !s) inps =
+        case inps of
+          []    -> let (force-> !d, force-> !nu) = trainFinal x s
+                   in  (d, nu, 1)
+          x':xs ->
+            let (_ , s') = runNetworkU na' nu0 x s
+                (force-> !d , force-> !nus, force-> !i) = goTS x' s' xs
                 -- can "run" values from runNetworkU be re-used here?
-                (d', nu ) = trainSample y' x' s d
-            in  (d', liftA2 (+) nu nus, i + 1)
-    trainFinal :: V o a
-               -> V i a
+                (d', nu) = trainSample x' s d
+            in  (d', nu ^+^ nus, i + 1)
+    trainFinal :: V i a
                -> NetStates i hs o a
                -> (Deltas i hs o a, NetworkU i hs o a)
-    trainFinal y = go nu0
+    trainFinal = go nu0
       where
         go :: forall j hs'. KnownNat j
            => NetworkU j hs' o a
@@ -224,16 +202,11 @@ trainSeries (NA f g) step stepS ios0 n0 =
               let d              :: V o a
                   d              = runFLayer l x
                   delta          :: V o a
-                  ln'            :: V o (Node j a)
-                  (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
+                  (delta, shft)   = unzipV $ liftA2 (adjustOutput (Node 1 x)) y d
                   -- drop contrib from bias term
                   deltaws        :: V j a
-                  -- deltaws        = delta *! (nodeWeights <$> ln')
                   deltaws        = delta *! (nodeWeights <$> ln)
-                  l'             :: FLayer j o a
-                  -- l'             = FLayer ln'
-                  l'             = FLayer shft
-              in  (DeltasOL deltaws, NetUOL l')
+              in  (DeltasOL deltaws, NetUOL (FLayer shft))
             NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
               case ns of
                 NetSIL s ns' ->
@@ -249,26 +222,19 @@ trainSeries (NA f g) step stepS ios0 n0 =
                                    DeltasOL dos -> dos
                                    DeltasIL dos _ _ -> dos
                       delta :: V k a
-                      ln' :: V k (RNode j k a)
-                      (delta, ln', shft) = unzipV3 $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
+                      (delta, shft) = unzipV $ liftA2 (adjustHidden (RNode 1 x s)) deltaos' d
                       deltawsI :: V j a
                       deltawsS :: V k a
                       deltawsI = delta *! (rNodeIWeights <$> ln)
                       deltawsS = delta *! (rNodeSWeights <$> ln)
-                      -- deltawsI = delta *! (rNodeIWeights <$> ln')
-                      -- deltawsS = delta *! (rNodeSWeights <$> ln')
-                      l' :: RLayerU j k a
-                      -- l' = RLayerU ln'
-                      l' = RLayerU shft
-                  in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
+                  in  (DeltasIL deltawsI deltawsS deltaos, RLayerU shft `NetUIL` n'')
                 _ -> error "impossible.  nu and ns should be same constructors."
     {-# INLINE trainFinal #-}
-    trainSample :: V o a
-                -> V i a
+    trainSample :: V i a
                 -> NetStates i hs o a
                 -> Deltas i hs o a
                 -> (Deltas i hs o a, NetworkU i hs o a)
-    trainSample y = go nu0
+    trainSample = go nu0
       where
         go :: forall j hs'. KnownNat j
            => NetworkU j hs' o a
@@ -278,20 +244,8 @@ trainSeries (NA f g) step stepS ios0 n0 =
            -> (Deltas j hs' o a, NetworkU j hs' o a)
         go nu x ns ds =
           case nu of
-            NetUOL l@(FLayer ln) ->
+            NetUOL _ ->
               (DeltasOL (pure 0), NetUOL (pure 0))
-              -- let d              :: V o a
-              --     d              = runFLayer l x
-              --     delta          :: V o a
-              --     ln'            :: V o (Node j a)
-              --     (delta, ln', shft)   = unzipV3 $ liftA3 (adjustOutput (Node 1 x)) ln y d
-              --     -- drop contrib from bias term
-              --     deltaws        :: V j a
-              --     -- deltaws        = delta *! (nodeWeights <$> ln')
-              --     deltaws        = delta *! (nodeWeights <$> ln)
-              --     l'             :: FLayer j o a
-              --     l'             = FLayer shft
-              -- in  (DeltasOL deltaws, NetUOL l')
             NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
               case ns of
                 NetSIL s ns' ->
@@ -306,21 +260,15 @@ trainSeries (NA f g) step stepS ios0 n0 =
                           -- deltaos from inputs only, not state
                           deltaos' :: V k a
                           deltaos' = case deltaos of            -- yeaa :D
-                                       -- DeltasOL dos     -> dos ^+^ delS
                                        DeltasOL _       -> delS
                                        DeltasIL dos _ _ -> dos ^+^ delS
                           delta :: V k a
-                          ln' :: V k (RNode j k a)
-                          (delta, ln', shft) = unzipV3 $ liftA3 (adjustHidden (RNode 1 x s)) ln deltaos' d
+                          (delta, shft) = unzipV $ liftA2 (adjustHidden (RNode 1 x s)) deltaos' d
                           deltawsI :: V j a
                           deltawsS :: V k a
-                          -- deltawsI = delta *! (rNodeIWeights <$> ln')
-                          -- deltawsS = delta *! (rNodeSWeights <$> ln')
                           deltawsI = delta *! (rNodeIWeights <$> ln)
                           deltawsS = delta *! (rNodeSWeights <$> ln)
-                          l' :: RLayerU j k a
-                          l' = RLayerU shft
-                      in  (DeltasIL deltawsI deltawsS deltaos, l' `NetUIL` n'')
+                      in  (DeltasIL deltawsI deltawsS deltaos, RLayerU shft `NetUIL` n'')
                     _ -> error "impossible.  nu and ds should be same constructors."
                 _ -> error "impossible.  nu and ns should be same constructors."
     {-# INLINE trainSample #-}
@@ -337,29 +285,24 @@ trainSeries (NA f g) step stepS ios0 n0 =
             NetSIL s ns' ->
               case ds of
                 DeltasIL _ (delS :: V k a) ds' ->
-                     -- RLayer ln s `NetIL` trainStates nu' ns' ds'
-                      -- -- should this have more/less steppage?
                   let s' = liftA2 (\d s0 -> s0 - d * stepS) delS s
                   in  RLayer ln s' `NetIL` trainStates nu' ns' ds'
                 _ -> error "impossible.  nu and ds should be same constructors."
             _ -> error "impossible.  nu and ns should be same constructors."
     {-# INLINE trainStates #-}
-    adjustOutput :: KnownNat j => Node j a -> Node j a -> a -> a -> (a, Node j a, Node j a)
-    adjustOutput xb node y' d = (delta, adjustWeights delta xb node, weightShifts delta xb)
+    adjustOutput :: KnownNat j => Node j a -> a -> a -> (a, Node j a)
+    adjustOutput xb y' d = (delta, weightShifts delta xb)
       where
         delta = let (o, o') = diff' g d
                 in  (o - y') * o'
     {-# INLINE adjustOutput #-}
-    adjustHidden :: Applicative f => f a -> f a -> a -> a -> (a, f a, f a)
-    adjustHidden xb node deltao d = (delta, adjustWeights delta xb node, weightShifts delta xb)
+    adjustHidden :: KnownNat k => RNode j k a -> a -> a -> (a, RNode j k a)
+    adjustHidden xb deltao d = (delta, weightShifts delta xb)
       where
         -- instead of (o - target), use deltao, weighted average of errors
         delta = deltao * diff f d
     {-# INLINE adjustHidden #-}
-    adjustWeights :: Applicative f => a -> f a -> f a -> f a
-    adjustWeights delta = liftA2 (\x n -> n - step * delta * x)
-    {-# INLINE adjustWeights #-}
-    weightShifts :: Applicative f => a -> f a -> f a
+    weightShifts :: Functor f => a -> f a -> f a
     weightShifts delta = fmap (\x -> delta * x)
     {-# INLINE weightShifts #-}
 
