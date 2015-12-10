@@ -155,7 +155,7 @@ toNetworkU n = case n of
                                in  (s', NetUIL l' n'')
 {-# INLINE toNetworkU #-}
 
-trainSeries :: forall i hs o a. (KnownNat i, KnownNat o, Fractional a, NFData a, Additive (NetworkU i hs o))
+trainSeries :: forall i hs o a. (KnownNet i hs o, Fractional a, NFData a)
             => NeuralActs (Forward a)
             -> a
             -> a
@@ -166,7 +166,7 @@ trainSeries :: forall i hs o a. (KnownNat i, KnownNat o, Fractional a, NFData a,
 trainSeries (NA f g) step stepS y inps0 n0 =
     case inps0 of
       [] -> n0
-      x0:xs -> let (ds, nuShifts, _) = goTS x0 ns0 xs
+      x0:xs -> let (ds, nuShifts) = goTS x0 ns0 xs
                    nu1 = nu0 ^-^ step *^ nuShifts
                in  trainStates nu1 ns0 ds
   where
@@ -175,17 +175,17 @@ trainSeries (NA f g) step stepS y inps0 n0 =
     goTS :: V i a
          -> NetStates i hs o a
          -> [V i a]
-         -> (Deltas i hs o a, NetworkU i hs o a, Int)
+         -> (Deltas i hs o a, NetworkU i hs o a)
     goTS (force-> !x) (force-> !s) inps =
         case inps of
           []    -> let (force-> !d, force-> !nu) = trainFinal x s
-                   in  (d, nu, 1)
+                   in  (d, nu)
           x':xs ->
             let (_ , s') = runNetworkU na' nu0 x s
-                (force-> !d , force-> !nus, force-> !i) = goTS x' s' xs
+                (force-> !d , force-> !nus) = goTS x' s' xs
                 -- can "run" values from runNetworkU be re-used here?
                 (d', nu) = trainSample x' s d
-            in  (d', nu ^+^ nus, i + 1)
+            in  (d', nu ^+^ nus)
     trainFinal :: V i a
                -> NetStates i hs o a
                -> (Deltas i hs o a, NetworkU i hs o a)
@@ -245,7 +245,7 @@ trainSeries (NA f g) step stepS y inps0 n0 =
         go nu x ns ds =
           case nu of
             NetUOL _ ->
-              (DeltasOL (pure 0), NetUOL (pure 0))
+              (DeltasOL zero, NetUOL zero)
             NetUIL l@(RLayerU ln :: RLayerU j k a) (nu' :: NetworkU k ks o a) ->
               case ns of
                 NetSIL s ns' ->
@@ -384,7 +384,7 @@ trainSeriesSI na nudge accept0 accept1 ios n = evalStateT (mapM_ f [0..n]) Nothi
     {-# INLINE f #-}
 {-# INLINE trainSeries #-}
 
-trainSeriesGD :: forall i hs o a. (Floating a, KnownNat i, KnownNat o, Random a, Applicative (Network i hs o), Show a, NFData (Network i hs o a))
+trainSeriesGD :: forall i hs o a. (Floating a, KnownNet i hs o, Random a, Show a, NFData a)
             => NeuralActs a
             -> a
             -> a

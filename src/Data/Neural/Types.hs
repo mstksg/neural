@@ -106,6 +106,18 @@ instance (KnownNat i, Additive (V i)) => Additive (Node i) where
     liftI2 f (Node b1 w1) (Node b2 w2) = Node (f b1 b2) (liftI2 f w1 w2)
     {-# INLINE liftI2 #-}
 
+instance (KnownNat i, Metric (V i)) => Metric (Node i) where
+    Node b1 w1 `dot` Node b2 w2 = b1 * b2 + w1 `dot` w2
+    {-# INLINE dot #-}
+    quadrance (Node b w) = b * b + quadrance w
+    {-# INLINE quadrance #-}
+    Node b1 w1 `qd` Node b2 w2 = (b2 - b1)^(2::Integer) + w1 `qd` w2
+    {-# INLINE qd #-}
+    distance (Node b1 w1) (Node b2 w2) = sqrt $ (b2 - b1)^(2::Integer) + w1 `qd` w2
+    {-# INLINE distance #-}
+
+
+
 instance Foldable (Node i) where
     fold (Node b w) = b <> fold w
     {-# INLINE fold #-}
@@ -163,6 +175,21 @@ instance NFData a => NFData (Node i a)
 
 instance NFData a => NFData (FLayer i o a)
 instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (FLayer i o a)
+
+instance (KnownNat i, KnownNat o) => Additive (FLayer i o) where
+    zero = FLayer $ pure zero
+    {-# INLINE zero #-}
+    FLayer l1 ^+^ FLayer l2 = FLayer $ liftI2 (^+^) l1 l2
+    {-# INLINE (^+^) #-}
+    FLayer l1 ^-^ FLayer l2 = FLayer $ liftI2 (^-^) l1 l2
+    {-# INLINE (^-^) #-}
+    lerp a (FLayer l1) (FLayer l2) = FLayer $ liftI2 (lerp a) l1 l2
+    {-# INLINE lerp #-}
+    liftU2 f (FLayer l1) (FLayer l2) = FLayer $ liftI2 (liftU2 f) l1 l2
+    {-# INLINE liftU2 #-}
+    liftI2 f (FLayer l1) (FLayer l2) = FLayer $ liftI2 (liftI2 f) l1 l2
+    {-# INLINE liftI2 #-}
+
 
 instance (KnownNat i, KnownNat o) => Applicative (FLayer i o) where
     pure = FLayer . pure . pure
