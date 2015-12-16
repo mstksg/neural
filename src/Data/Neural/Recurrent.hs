@@ -337,6 +337,13 @@ tNetLayers f g n = case n of
                      NetIL l n' -> NetIL <$> g l <*> tNetLayers f g n'
 
 
+tRNodeSWeights :: Lens (RNode i s a) (RNode i s' a) (V s a) (V s' a)
+tRNodeSWeights f n = (\w -> n { rNodeSWeights = w }) <$> f (rNodeSWeights n)
+
+tRNodeIWeights :: Lens (RNode i s a) (RNode i' s a) (V i a) (V i' a)
+tRNodeIWeights f n = (\w -> n { rNodeIWeights = w }) <$> f (rNodeIWeights n)
+
+
 -- | Validating
 
 seriesError :: (KnownNat i, KnownNat o, Num a, Traversable t)

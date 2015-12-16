@@ -11,6 +11,7 @@ module Data.Neural.Utility where
 
 import Control.DeepSeq
 import Data.Neural.Types
+import Data.Finite
 import Data.Proxy
 import Data.Reflection
 import Data.Type.Product
@@ -125,3 +126,12 @@ instance (Dim i, Dim o) => Nudges (FLayer i o) where
 accumV :: (a -> b -> a) -> V n a -> [(Int, b)] -> V n a
 accumV f (V v) xs = V (V.accum f v xs)
 
+deleteV :: Finite n -> V n a -> V (n - 1) a
+deleteV fn (V v) = V $ deleteVec (fromIntegral (getFinite fn)) v
+
+snocV :: V n a -> a -> V (n + 1) a
+snocV (V v) x = V $ V.snoc v x
+
+deleteVec :: Int -> V.Vector a -> V.Vector a
+deleteVec i v = let (v0, v1) = V.splitAt i v
+                in  v0 V.++ V.tail v1

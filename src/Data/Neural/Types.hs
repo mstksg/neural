@@ -224,6 +224,9 @@ instance B.Binary a => B.Binary (SomeFLayer a) where
 tFLayerNodes :: Lens (FLayer i o a) (FLayer i' o' a) (V o (Node i a)) (V o' (Node i' a))
 tFLayerNodes f l = (\w -> l { layerNodes = w }) <$> f (layerNodes l)
 
+tNodeWeights :: Lens (Node i a) (Node i' a) (V i a) (V i' a)
+tNodeWeights f n = (\w -> n { nodeWeights = w }) <$> f (nodeWeights n)
+
 
 -- | * Network
 
