@@ -19,8 +19,9 @@ library
   exposed-modules:     Data.Neural.Types
                        Data.Neural.FeedForward
                        Data.Neural.Recurrent
-                       Data.Neural.Recurrent.Train
                        Data.Neural.Recurrent.Modify
+                       Data.Neural.Recurrent.Significance
+                       Data.Neural.Recurrent.Train
                        Data.Neural.Utility
   -- other-modules:       
   -- other-extensions:    
@@ -39,6 +40,7 @@ library
                      , reflection
                      , typelits-witnesses
                      , constraints
+                     , semigroups
   hs-source-dirs:      src
   ghc-options:         -O2 -Wall
   default-language:    Haskell2010

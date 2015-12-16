@@ -20,20 +20,21 @@ module Data.Neural.Types where
 import Control.Applicative
 import Control.Arrow
 import Control.DeepSeq
+import Control.Lens
 import Control.Monad.Trans.State
 import Data.Foldable
-import GHC.TypeLits.List
 import Data.Monoid
 import Data.Proxy
 import Data.Reflection
 import Data.Type.Product
 import GHC.Generics
 import GHC.TypeLits
+import GHC.TypeLits.List
 import Linear
 import Linear.V
 import System.Random
-import qualified Data.Binary      as B
-import qualified Data.Vector      as V
+import qualified Data.Binary     as B
+import qualified Data.Vector     as V
 
 -- | Types
 
@@ -220,6 +221,8 @@ instance B.Binary a => B.Binary (SomeFLayer a) where
           SomeFLayer <$> (B.get :: B.Get (FLayer i o a))
 
 
+tFLayerNodes :: Lens (FLayer i o a) (FLayer i' o' a) (V o (Node i a)) (V o' (Node i' a))
+tFLayerNodes f l = (\w -> l { layerNodes = w }) <$> f (layerNodes l)
 
 
 -- | * Network
