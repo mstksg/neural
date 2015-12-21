@@ -26,7 +26,6 @@ import Data.Foldable
 import Data.Monoid
 import Data.Proxy
 import Data.Reflection
-import Data.Type.Product
 import GHC.Generics
 import GHC.TypeLits
 import GHC.TypeLits.List
@@ -55,7 +54,7 @@ data SomeFLayer :: * -> * where
 data NetStruct :: * where
     NetStruct :: KnownNet i hs o
               => Proxy i
-              -> Prod Proxy hs
+              -> NatList hs
               -> Proxy o
               -> NetStruct
 

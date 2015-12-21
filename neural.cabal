@@ -20,28 +20,31 @@ library
                        Data.Neural.FeedForward
                        Data.Neural.Recurrent
                        Data.Neural.Recurrent.Modify
-                       Data.Neural.Recurrent.Significance
+                       -- Data.Neural.Recurrent.Significance
                        Data.Neural.Recurrent.Train
                        Data.Neural.Utility
+                       Data.Neural.HMatrix.Recurrent
+                       Data.Neural.HMatrix.Recurrent.Train
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9
-                     , linear
-                     , vector
-                     , random
-                     , transformers
-                     , binary
-                     , finite-typelits
-                     , lens
-                     , deepseq
-                     , ad
-                     , type-combinators
-                     , mtl
                      , MonadRandom
-                     , reflection
-                     , typelits-witnesses
+                     , ad
+                     , binary
                      , constraints
+                     , deepseq
+                     , finite-typelits
+                     , hmatrix
+                     , lens
+                     , linear
+                     , mtl
+                     , random
+                     , reflection
                      , semigroups
+                     , transformers
+                     , type-combinators
+                     , typelits-witnesses
+                     , vector
   hs-source-dirs:      src
   ghc-options:         -O2 -Wall
   default-language:    Haskell2010

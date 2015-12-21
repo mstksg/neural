@@ -10,11 +10,10 @@
 module Data.Neural.Utility where
 
 import Control.DeepSeq
-import Data.Neural.Types
 import Data.Finite
+import Data.Neural.Types
 import Data.Proxy
 import Data.Reflection
-import Data.Type.Product
 import GHC.TypeLits
 import GHC.TypeLits.List
 import Linear
@@ -75,7 +74,7 @@ netStructVal x ys z = do
 
 reifyNetStruct :: Integer -> [Integer] -> Integer
                -> (forall i hs o. (KnownNat i, KnownNat o, KnownNats hs)
-                               => Proxy i -> Prod Proxy hs -> Proxy o -> r )
+                               => Proxy i -> NatList hs -> Proxy o -> r )
                -> r
 reifyNetStruct x ys z f = reifyNat x $ \i ->
                             reifyNats ys $ \hs ->
