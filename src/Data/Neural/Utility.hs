@@ -10,12 +10,15 @@
 module Data.Neural.Utility where
 
 import Control.DeepSeq
+import qualified Numeric.LinearAlgebra.Static as H
 import Data.Finite
+import Data.Maybe (fromJust)
 import Data.Neural.Types
 import Data.Proxy
 import Data.Reflection
 import GHC.TypeLits
 import GHC.TypeLits.List
+import qualified Data.Vector.Generic as VG
 import Linear
 import Linear.V
 import qualified Data.Vector as V
@@ -42,6 +45,9 @@ naLogId = NA logistic id
 
 naLogLog :: Floating a => NeuralActs a
 naLogLog = NA logistic logistic
+
+vToR :: KnownNat n => V n Double -> H.R n
+vToR (V v) = fromJust $ H.create (VG.convert v)
 
 
 runFLayer :: (KnownNat i, Num a) => FLayer i o a -> V i a -> V o a

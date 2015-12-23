@@ -1,29 +1,38 @@
-{-# LANGUAGE BangPatterns        #-}
-{-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE DeriveGeneric       #-}
-{-# LANGUAGE FlexibleContexts    #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE KindSignatures      #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
-{-# LANGUAGE TypeOperators       #-}
-{-# LANGUAGE ViewPatterns        #-}
-{-# LANGUAGE ViewPatterns        #-}
+{-# LANGUAGE BangPatterns         #-}
+{-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
+{-# LANGUAGE KindSignatures       #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE StandaloneDeriving   #-}
+{-# LANGUAGE TypeFamilies         #-}
+{-# LANGUAGE TypeOperators        #-}
+{-# LANGUAGE ViewPatterns         #-}
+{-# LANGUAGE ViewPatterns         #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
 module Data.Neural.HMatrix.Recurrent where
 
+-- import Data.Containers
 import Control.DeepSeq
-import Control.Monad.Random         as R
+import Control.Monad.Random            as R
 import Control.Monad.State
-import Data.Neural.Types            (KnownNet, NeuralActs(..))
+import Data.MonoTraversable
+import Data.Neural.Types               (KnownNet, NeuralActs(..))
 import Data.Proxy
 import Data.Reflection
-import GHC.Generics                 (Generic)
+import GHC.Generics                    (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
 import Numeric.LinearAlgebra.Static
-import qualified Data.Binary        as B
+import qualified Data.Binary           as B
+import qualified Data.Neural.Recurrent as N
+import qualified Data.Neural.Types     as N
+import qualified Data.Vector           as V
+import qualified Data.Vector.Generic   as VG
+import qualified Linear.V              as L
+import qualified Numeric.LinearAlgebra as H
 
 data FLayer :: Nat -> Nat -> * where
     FLayer :: { fLayerBiases  :: !(R o)
@@ -68,15 +77,42 @@ deriving instance Show SomeNet
 deriving instance (KnownNat i, KnownNat o) => Show (OpaqueNet i o)
 deriving instance Show SomeFLayer
 
-randomVec :: (RandomGen g, KnownNat n)
-          => (Double, Double) -> g -> (R n, g)
-randomVec r g = let (g', g'') = R.split g
-                in  (vector (randomRs r g'), g'')
+type instance Element (FLayer i o) = Double
 
-randomMat :: (RandomGen g, KnownNat n, KnownNat m)
+instance MonoFunctor (FLayer i o) where
+    omap f (FLayer b w) = FLayer (dvmap f b) (dmmap f w)
+
+-- instance MonoZip (FLayer i o) where
+--     ozipWith f (FLayer b1 w1) (FLayer b2 w2) = FLayer ()
+
+konstFLayer :: (KnownNat i, KnownNat o)
+            => Double
+            -> FLayer i o
+konstFLayer = FLayer <$> konst <*> konst
+
+instance (KnownNat i, KnownNat o) => Num (FLayer i o) where
+    FLayer b1 w1 + FLayer b2 w2 = FLayer (b1 + b2) (w1 + w2)
+    FLayer b1 w1 * FLayer b2 w2 = FLayer (b1 * b2) (w1 * w2)
+    FLayer b1 w1 - FLayer b2 w2 = FLayer (b1 - b2) (w1 - w2)
+    abs (FLayer b w) = FLayer (abs b) (abs w)
+    negate (FLayer b w) = FLayer (negate b) (negate w)
+    signum (FLayer b w) = FLayer (signum b) (signum w)
+    fromInteger = FLayer <$> fromInteger <*> fromInteger
+
+randomVec :: forall g n. (RandomGen g, KnownNat n)
+          => (Double, Double) -> g -> (R n, g)
+randomVec r = runRand $
+  fmap vector . replicateM (fromInteger (natVal (Proxy :: Proxy n))) $
+    getRandomR r
+
+randomMat :: forall g n m. (RandomGen g, KnownNat n, KnownNat m)
           => (Double, Double) -> g -> (L n m, g)
-randomMat r g = let (g', g'') = R.split g
-                in  (matrix (randomRs r g'), g'')
+randomMat r = runRand $
+    fmap matrix . replicateM (fromInteger s) $
+      getRandomR r
+  where
+    s = natVal (Proxy :: Proxy n) * natVal (Proxy :: Proxy m)
+
 
 instance (KnownNat i, KnownNat o) => Random (FLayer i o) where
     random = runRand $
@@ -91,6 +127,13 @@ instance (KnownNat i, KnownNat o) => Random (RLayer i o) where
                <*> liftRand (randomMat (-1, 1))
                <*> liftRand (randomVec (-1, 1))
     randomR  = error "RLayer i o (randomR): Unimplemented"
+
+instance KnownNet i hs o => Random (Network i hs o) where
+    random = runRand $ do
+      case natsList :: NatList hs of
+        ØNL     -> NetOL <$> getRandom
+        _ :<# _ -> NetIL <$> getRandom <*> getRandom
+    randomR  = error "Network i hs o (randomR): Unimplemented"
 
 instance NFData (FLayer i o)
 instance NFData (RLayer i o)
@@ -192,7 +235,7 @@ runRLayer :: (KnownNat i, KnownNat o)
           -> RLayer i o
           -> R i
           -> (R o, RLayer i o)
-runRLayer f l@(RLayer b wI wS s) v = (v', l { rLayerState = mapR f v' })
+runRLayer f l@(RLayer b wI wS s) v = (v', l { rLayerState = dvmap f v' })
   where
     v'       = b + wI #> v + wS #> s
 {-# INLINE runRLayer #-}
@@ -209,11 +252,19 @@ runNetwork (NA f g) = go
        -> R i'
        -> (R o, Network i' hs' o)
     go n v = case n of
-               NetOL l    -> (mapR g (runFLayer l v), n)
+               NetOL l    -> (dvmap g (runFLayer l v), n)
                NetIL l nI -> let (v' , l')  = runRLayer f l v
-                                 (v'', nI') = go nI (mapR f v')
+                                 (v'', nI') = go nI (dvmap f v')
                              in  (v'', NetIL l' nI')
 {-# INLINE runNetwork #-}
+
+runNetwork_ :: forall i hs o. (KnownNat i, KnownNat o)
+            => NeuralActs Double
+            -> Network i hs o
+            -> R i
+            -> R o
+runNetwork_ na n = fst . runNetwork na n
+{-# INLINE runNetwork_ #-}
 
 runNetworkS :: (KnownNat i, KnownNat o, MonadState (Network i hs o) m)
             => NeuralActs Double
@@ -234,9 +285,9 @@ runNetworkActs (NA f g) = go
        -> R i'
        -> (NetActs i' hs' o, Network i' hs' o)
     go n v = case n of
-               NetOL l    -> (NetAOL (mapR g (runFLayer l v)), n)
+               NetOL l    -> (NetAOL (dvmap g (runFLayer l v)), n)
                NetIL l nI -> let (v' , l') = runRLayer f l v
-                                 vRes      = mapR f v'
+                                 vRes      = dvmap f v'
                                  (nA, nI') = go nI vRes
                              in  (NetAIL vRes nA, NetIL l' nI')
 {-# INLINE runNetworkActs #-}
@@ -291,4 +342,23 @@ runNetStreamActs_ na = go
 {-# INLINE runNetStreamActs_ #-}
 
 
+fLayerFromHMat :: (KnownNat i, KnownNat o) => FLayer i o ->  N.FLayer i o Double
+fLayerFromHMat (FLayer b w) = N.FLayer . L.V . V.fromList $ zipWith N.Node bl wl
+  where
+    bl = H.toList (extract b)
+    wl = map (L.V . VG.convert . extract) $ toRows w
+
+rLayerFromHMat :: (KnownNat i, KnownNat o) => RLayer i o -> N.RLayer i o Double
+rLayerFromHMat (RLayer b wI wS s) = N.RLayer (L.V . V.fromList $ zipWith3 N.RNode bl wIl wSl)
+                                             (L.V sv)
+  where
+    bl = H.toList (extract b)
+    sv = VG.convert (extract s)
+    wIl = map (L.V . VG.convert . extract) $ toRows wI
+    wSl = map (L.V . VG.convert . extract) $ toRows wS
+
+networkFromHMat :: KnownNet i hs o => Network i hs o -> N.Network i hs o Double
+networkFromHMat n = case n of
+                      NetOL l    -> N.NetOL (fLayerFromHMat l)
+                      NetIL l n' -> rLayerFromHMat l `N.NetIL` networkFromHMat n'
 
