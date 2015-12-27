@@ -15,6 +15,7 @@ import Control.DeepSeq
 import Data.Neural.HMatrix.Recurrent
 import Data.MonoTraversable
 import Data.Neural.Types             (NeuralActs(..), KnownNet)
+import Control.Monad.Random
 import GHC.Generics                  (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
@@ -299,3 +300,15 @@ trainSeries (NA f g) step stepS targ inps0 n0 =
                   in  RLayer b wI wS s' `NetIL` trainStates nu' ns' ds'
                 _ -> error "impossible.  nu and ds should be same constructors."
             _ -> error "impossible.  nu and ns should be same constructors."
+
+trainSeriesDO :: forall i hs o m. (KnownNet i hs o, MonadRandom m)
+              => NeuralActs (Forward Double)
+              -> Double
+              -> Double
+              -> Double
+              -> R o
+              -> [R i]
+              -> Network i hs o
+              -> m (Network i hs o)
+trainSeriesDO (NA f g) doRate step stepS targ inps0 n0 = undefined
+
