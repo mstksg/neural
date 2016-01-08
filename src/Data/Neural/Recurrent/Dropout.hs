@@ -23,6 +23,6 @@ compensateDO d n =
         in  NetIL l' n''
   where
     compensateStates :: forall j k. (KnownNat j, KnownNat k) => RLayer j k a -> RLayer j k a
-    compensateStates = over (tRLayerNodes . traverse . tRNodeSWeights) (d *^)
+    compensateStates = over (tRLayerNodes . traverse . tRNodeSWeights) ((1-d) *^)
     compensateInps   :: forall j k. (KnownNat j, KnownNat k) => RLayer j k a -> RLayer j k a
-    compensateInps   = over (tRLayerNodes . traverse . tRNodeIWeights) (d *^)
+    compensateInps   = over (tRLayerNodes . traverse . tRNodeIWeights) ((1-d) *^)
