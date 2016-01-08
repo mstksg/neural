@@ -83,7 +83,7 @@ genNetMask doRate = go natsList
               ØNL       -> return MaskOL
               _ :<# nl' -> liftA2 MaskIL randomMask (go nl')
     randomMask :: forall n. KnownNat n => m (R n)
-    randomMask = dvmap (bool 0 1 . (< doRate)) . flip randomVector Uniform
+    randomMask = dvmap (bool 0 1 . (doRate <)) . flip randomVector Uniform
              <$> getRandom
 {-# INLINE genNetMask #-}
 
