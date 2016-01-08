@@ -283,19 +283,19 @@ randomNetwork :: (MonadRandom m, Random (Network i hs o a), Num a)
               => m (Network i hs o a)
 randomNetwork = fmap (subtract 1 . (*2)) <$> getRandom
 
-randomNetwork' :: (KnownNat o, MonadRandom m, Random (Network i hs o a), Num a)
+randomNetwork' :: (KnownNet i hs o, MonadRandom m, Random (Network i hs o a), Num a)
                => m (Network i hs o a)
 randomNetwork' = resetNetState <$> randomNetwork
 
-resetNetState :: forall i hs o a. (KnownNat o, Num a) => Network i hs o a -> Network i hs o a
+resetNetState :: forall i hs o a. (KnownNat o, KnownNat i, Num a) => Network i hs o a -> Network i hs o a
 resetNetState n = runIdentity (tNetStates (\_ -> Identity (pure 0)) n)
 
 
 -- | Some traversals
 -- TODO: sharing with go
 
-tNetRLayers :: (Applicative f, KnownNat o)
-            => (forall i' o'. KnownNat o' => RLayer i' o' a -> f (RLayer i' o' a))
+tNetRLayers :: (Applicative f, KnownNat o, KnownNat i)
+            => (forall i' o'. (KnownNat i', KnownNat o') => RLayer i' o' a -> f (RLayer i' o' a))
             -> Network i hs o a
             -> f (Network i hs o a)
 tNetRLayers f n = case n of
@@ -312,7 +312,7 @@ tRLayerState :: Lens' (RLayer i o a) (V o a)
 tRLayerState f l = (\s -> l { rLayerState = s }) <$> f (rLayerState l)
 {-# INLINE tRLayerState #-}
 
-tNetStates :: (Applicative f, KnownNat o)
+tNetStates :: (Applicative f, KnownNat o, KnownNat i)
            => (forall h. KnownNat h => V h a -> f (V h a))
            -> Network i hs o a
            -> f (Network i hs o a)

@@ -1,14 +1,15 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveGeneric        #-}
+{-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE GADTs                #-}
 {-# LANGUAGE KindSignatures       #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
+{-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
-{-# LANGUAGE ViewPatterns         #-}
 {-# LANGUAGE ViewPatterns         #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
@@ -16,23 +17,23 @@ module Data.Neural.HMatrix.Recurrent where
 
 -- import Data.Containers
 import Control.DeepSeq
-import Control.Monad.Random            as R
+import Control.Monad.Random                as R
 import Control.Monad.State
 import Data.MonoTraversable
-import Data.Neural.Types               (KnownNet, NeuralActs(..))
+import Data.Neural.Types                   (KnownNet, NeuralActs(..))
 import Data.Proxy
 import Data.Reflection
-import GHC.Generics                    (Generic)
+import GHC.Generics                        (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
 import Numeric.LinearAlgebra.Static
-import qualified Data.Binary           as B
-import qualified Data.Neural.Recurrent as N
-import qualified Data.Neural.Types     as N
-import qualified Data.Vector           as V
-import qualified Data.Vector.Generic   as VG
-import qualified Linear.V              as L
-import qualified Numeric.LinearAlgebra as H
+import qualified Data.Binary               as B
+import qualified Data.Neural.Recurrent     as N
+import qualified Data.Neural.Types         as N
+import qualified Data.Vector               as V
+import qualified Data.Vector.Generic       as VG
+import qualified Linear.V                  as L
+import qualified Numeric.LinearAlgebra     as H
 
 data FLayer :: Nat -> Nat -> * where
     FLayer :: { fLayerBiases  :: !(R o)
@@ -79,7 +80,7 @@ deriving instance Show SomeFLayer
 
 type instance Element (FLayer i o) = Double
 
-instance MonoFunctor (FLayer i o) where
+instance (KnownNat i, KnownNat o) => MonoFunctor (FLayer i o) where
     omap f (FLayer b w) = FLayer (dvmap f b) (dmmap f w)
 
 -- instance MonoZip (FLayer i o) where
@@ -99,6 +100,70 @@ instance (KnownNat i, KnownNat o) => Num (FLayer i o) where
     signum (FLayer b w) = FLayer (signum b) (signum w)
     fromInteger = FLayer <$> fromInteger <*> fromInteger
 
+konstRLayer :: (KnownNat i, KnownNat o)
+            => Double
+            -> RLayer i o
+konstRLayer = RLayer <$> konst <*> konst <*> konst <*> konst
+
+instance (KnownNat i, KnownNat o) => Num (RLayer i o) where
+    RLayer b1 wI1 wS1 s1 + RLayer b2 wI2 wS2 s2 = RLayer (b1  + b2)
+                                                         (wI1 + wI2)
+                                                         (wS1 + wS2)
+                                                         (s1  + s2)
+    RLayer b1 wI1 wS1 s1 * RLayer b2 wI2 wS2 s2 = RLayer (b1  * b2)
+                                                         (wI1 * wI2)
+                                                         (wS1 * wS2)
+                                                         (s1  * s2)
+    RLayer b1 wI1 wS1 s1 - RLayer b2 wI2 wS2 s2 = RLayer (b1  - b2)
+                                                         (wI1 - wI2)
+                                                         (wS1 - wS2)
+                                                         (s1  - s2)
+    abs    (RLayer b wI wS s) = RLayer (abs b) (abs wI) (abs wS) (abs s)
+    negate (RLayer b wI wS s) = RLayer (negate b) (negate wI) (negate wS) (negate s)
+    signum (RLayer b wI wS s) = RLayer (signum b) (signum wI) (signum wS) (signum s)
+    fromInteger = RLayer <$> fromInteger
+                         <*> fromInteger
+                         <*> fromInteger
+                         <*> fromInteger
+
+
+pureNet :: forall i hs o. KnownNet i hs o
+        => (forall j k. (KnownNat j, KnownNat k) => FLayer j k)
+        -> (forall j k. (KnownNat j, KnownNat k) => RLayer j k)
+        -> Network i hs o
+pureNet lf lr = go natsList
+  where
+    go :: forall j js. KnownNat j => NatList js -> Network j js o
+    go nl = case nl of
+           ØNL       -> NetOL lf
+           _ :<# nl' -> lr `NetIL` go nl'
+
+konstNet :: KnownNet i hs o => Double -> Network i hs o
+konstNet x = pureNet (konstFLayer x) (konstRLayer x)
+
+zipNet
+    :: forall i hs o. KnownNet i hs o
+    => (forall j k. (KnownNat j, KnownNat k) => FLayer j k -> FLayer j k -> FLayer j k)
+    -> (forall j k. (KnownNat j, KnownNat k) => RLayer j k -> RLayer j k -> RLayer j k)
+    -> Network i hs o -> Network i hs o
+    -> Network i hs o
+zipNet ff fr = go
+  where
+    go :: forall j js. KnownNet j js o => Network j js o -> Network j js o -> Network j js o
+    go n1 n2 = case n1 of
+                 NetOL l1 ->
+                   case n2 of
+                     NetOL l2 -> NetOL (ff l1 l2)
+                     _        -> error "impossible"
+                 NetIL l1 n1' ->
+                   case n2 of
+                     NetIL l2 n2' ->
+                       NetIL (fr l1 l2) (go n1' n2')
+                     _             ->
+                       error "impossible"
+
+
+-- TODO: can be done better now
 randomVec :: forall g n. (RandomGen g, KnownNat n)
           => (Double, Double) -> g -> (R n, g)
 randomVec r = runRand $
@@ -129,10 +194,15 @@ instance (KnownNat i, KnownNat o) => Random (RLayer i o) where
     randomR  = error "RLayer i o (randomR): Unimplemented"
 
 instance KnownNet i hs o => Random (Network i hs o) where
-    random = runRand $ do
-      case natsList :: NatList hs of
-        ØNL     -> NetOL <$> getRandom
-        _ :<# _ -> NetIL <$> getRandom <*> getRandom
+    random :: forall g. RandomGen g => g -> (Network i hs o, g)
+    random = runRand $ go natsList
+      where
+        go :: forall j js. KnownNat j
+           => NatList js
+           -> Rand g (Network j js o)
+        go nl = case nl of
+                  ØNL       -> NetOL <$> getRandom
+                  _ :<# nl' -> NetIL <$> getRandom <*> go nl'
     randomR  = error "Network i hs o (randomR): Unimplemented"
 
 instance NFData (FLayer i o)
@@ -181,9 +251,14 @@ instance B.Binary SomeFLayer where
 instance KnownNet i hs o => B.Binary (Network i hs o) where
     put (NetOL l)    = B.put l
     put (NetIL l n') = B.put l *> B.put n'
-    get = case natsList :: NatList hs of
-            ØNL     -> NetOL <$> B.get
-            _ :<# _ -> NetIL <$> B.get <*> B.get
+    get = go natsList
+      where
+        go :: forall j js. KnownNat j
+           => NatList js
+           -> B.Get (Network j js o)
+        go nl = case nl of
+                  ØNL       -> NetOL <$> B.get
+                  _ :<# nl' -> NetIL <$> B.get <*> go nl'
 
 instance B.Binary SomeNet where
     put sn = case sn of

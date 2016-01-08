@@ -12,10 +12,9 @@
 module Data.Neural.HMatrix.Recurrent.Train where
 
 import Control.DeepSeq
-import Data.Neural.HMatrix.Recurrent
 import Data.MonoTraversable
+import Data.Neural.HMatrix.Recurrent
 import Data.Neural.Types             (NeuralActs(..), KnownNet)
-import Control.Monad.Random
 import GHC.Generics                  (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
@@ -72,11 +71,12 @@ type instance Element (NetworkU i hs o) = Double
 --     omap f n = case n of
 --                  NetUOL l -> NetUOL (omap f l)
 
-zipNetU :: forall i hs o. KnownNet i hs o
-        => (forall j k. (KnownNat j, KnownNat k) => FLayer j k -> FLayer j k -> FLayer j k)
-        -> (forall j k. (KnownNat j, KnownNat k) => RLayerU j k -> RLayerU j k -> RLayerU j k)
-        -> NetworkU i hs o -> NetworkU i hs o
-        -> NetworkU i hs o
+zipNetU
+    :: forall i hs o. KnownNet i hs o
+    => (forall j k. (KnownNat j, KnownNat k) => FLayer j k -> FLayer j k -> FLayer j k)
+    -> (forall j k. (KnownNat j, KnownNat k) => RLayerU j k -> RLayerU j k -> RLayerU j k)
+    -> NetworkU i hs o -> NetworkU i hs o
+    -> NetworkU i hs o
 zipNetU ff fr = go
   where
     go :: forall j js. KnownNet j js o => NetworkU j js o -> NetworkU j js o -> NetworkU j js o
@@ -92,11 +92,12 @@ zipNetU ff fr = go
                      _             ->
                        error "impossible"
 
-mapNetU :: forall i hs o. KnownNet i hs o
-        => (forall j k. (KnownNat j, KnownNat k) => FLayer j k -> FLayer j k)
-        -> (forall j k. (KnownNat j, KnownNat k) => RLayerU j k -> RLayerU j k)
-        -> NetworkU i hs o
-        -> NetworkU i hs o
+mapNetU
+    :: forall i hs o. KnownNet i hs o
+    => (forall j k. (KnownNat j, KnownNat k) => FLayer j k -> FLayer j k)
+    -> (forall j k. (KnownNat j, KnownNat k) => RLayerU j k -> RLayerU j k)
+    -> NetworkU i hs o
+    -> NetworkU i hs o
 mapNetU ff fr = go
   where
     go :: forall j js. KnownNet j js o => NetworkU j js o -> NetworkU j js o
@@ -108,17 +109,28 @@ pureNetU :: forall i hs o. KnownNet i hs o
          => (forall j k. (KnownNat j, KnownNat k) => FLayer j k)
          -> (forall j k. (KnownNat j, KnownNat k) => RLayerU j k)
          -> NetworkU i hs o
-pureNetU lf lr = go
+pureNetU lf lr = go natsList
   where
-    go :: forall j js. KnownNet j js o => NetworkU j js o
-    go = case natsList :: NatList js of
-           ØNL     -> NetUOL lf
-           _ :<# _ -> lr `NetUIL` go
+    go :: forall j js. KnownNat j => NatList js -> NetworkU j js o
+    go nl = case nl of
+           ØNL       -> NetUOL lf
+           _ :<# nl' -> lr `NetUIL` go nl'
 
 konstNetU :: KnownNet i hs o
           => Double
           -> NetworkU i hs o
 konstNetU i = pureNetU (konstFLayer i) (konstRLayerU i)
+
+pureDeltas
+    :: forall i hs o. KnownNet i hs o
+    => (forall j. KnownNat j => R j)
+    -> Deltas i hs o
+pureDeltas v = go natsList
+  where
+    go :: forall j js. KnownNat j => NatList js -> Deltas j js o
+    go nl = case nl of
+              ØNL       -> DeltasOL v
+              _ :<# nl' -> DeltasIL v v (go nl')
 
 instance KnownNet i hs o => Num (NetworkU i hs o) where
     (+) = zipNetU (+) (+)
@@ -129,35 +141,38 @@ instance KnownNet i hs o => Num (NetworkU i hs o) where
     signum = mapNetU signum signum
     fromInteger i = pureNetU (fromInteger i) (fromInteger i)
 
-konstRLayerU :: (KnownNat i, KnownNat o)
-             => Double
-             -> RLayerU i o
+konstRLayerU
+    :: (KnownNat i, KnownNat o)
+    => Double
+    -> RLayerU i o
 konstRLayerU = RLayerU <$> konst <*> konst <*> konst
 
-runRLayerU :: (KnownNat i, KnownNat o)
-           => (Double -> Double)
-           -> RLayerU i o
-           -> R i
-           -> R o
-           -> (R o, R o)
+runRLayerU
+    :: (KnownNat i, KnownNat o)
+    => (Double -> Double)
+    -> RLayerU i o
+    -> R i
+    -> R o
+    -> (R o, R o)
 runRLayerU f (RLayerU b wI wS) v s = (v', dvmap f v')
   where
     v'       = b + wI #> v + wS #> s
 {-# INLINE runRLayerU #-}
 
-runNetworkU :: forall i hs o. (KnownNet i hs o)
-            => NeuralActs Double
-            -> NetworkU i hs o
-            -> R i
-            -> NetStates i hs o
-            -> (R o, NetStates i hs o)
+runNetworkU
+    :: forall i hs o. (KnownNet i hs o)
+    => NeuralActs Double
+    -> NetworkU i hs o
+    -> R i
+    -> NetStates i hs o
+    -> (R o, NetStates i hs o)
 runNetworkU (NA f g) = go
   where
-    go :: forall j hs'. KnownNat j
-       => NetworkU j hs' o
-       -> R j
-       -> NetStates j hs' o
-       -> (R o, NetStates j hs' o)
+    go  :: forall j hs'. KnownNat j
+        => NetworkU j hs' o
+        -> R j
+        -> NetStates j hs' o
+        -> (R o, NetStates j hs' o)
     go n v ns = case n of
                   NetUOL l ->
                     (dvmap g (runFLayer l v), NetSOL)
@@ -181,27 +196,69 @@ toNetworkU n = case n of
                                in  (s', NetUIL l' n'')
 {-# INLINE toNetworkU #-}
 
-trainSeries :: forall i hs o. KnownNet i hs o
-            => NeuralActs (Forward Double)
-            -> Double
-            -> Double
-            -> R o
-            -> [R i]
-            -> Network i hs o
-            -> Network i hs o
-trainSeries (NA f g) step stepS targ inps0 n0 =
+trainSeries
+    :: forall i hs o. KnownNet i hs o
+    => NeuralActs (Forward Double)
+    -> Double
+    -> Double
+    -> R o
+    -> [R i]
+    -> Network i hs o
+    -> Network i hs o
+trainSeries na step stepS targ inps0 n0 =
+    trainStates stepS (nu0 - nuShifts) ns0 ds
+  where
+    (ns0, nu0)     = toNetworkU n0
+    (ds, nuShifts) = bptt na step targ inps0 ns0 nu0
+
+trainStates
+    :: forall i hs o. KnownNet i hs o
+    => Double
+    -> NetworkU i hs o
+    -> NetStates i hs o
+    -> Deltas i hs o
+    -> Network i hs o
+trainStates stepS = go
+  where
+    go  :: forall j js. KnownNat j
+        => NetworkU j js o
+        -> NetStates j js o
+        -> Deltas j js o
+        -> Network j js o
+    go nu ns ds =
+      case nu of
+        NetUOL l -> NetOL l
+        NetUIL (RLayerU b wI wS :: RLayerU j k) (nu' :: NetworkU k ks o) ->
+          case ns of
+            NetSIL s ns' ->
+              case ds of
+                DeltasIL _ (delS :: R k) ds' ->
+                  let s' = s - konst stepS * delS
+                  in  RLayer b wI wS s' `NetIL` go nu' ns' ds'
+                _ -> error "impossible.  nu and ds should be same constructors."
+            _ -> error "impossible.  nu and ns should be same constructors."
+
+bptt
+    :: forall i hs o. KnownNet i hs o
+    => NeuralActs (Forward Double)
+    -> Double
+    -> R o
+    -> [R i]
+    -> NetStates i hs o
+    -> NetworkU i hs o
+    -> (Deltas i hs o, NetworkU i hs o)
+bptt (NA f g) step targ inps0 ns0 nu0 =
     case inps0 of
-      [] -> n0
+      []    -> (pureDeltas 0, 0)
       x0:xs -> let (ds, nuShifts) = goTS x0 ns0 xs
-                   nu1 = nu0 - konstNetU step * nuShifts
-               in  trainStates nu1 ns0 ds
+               in  (ds, konstNetU step * nuShifts)
   where
     na'@(NA f_ g_) = NA (fst . diff' f) (fst . diff' g)
-    (ns0, nu0) = toNetworkU n0
-    goTS :: R i
-         -> NetStates i hs o
-         -> [R i]
-         -> (Deltas i hs o, NetworkU i hs o)
+    goTS
+        :: R i
+        -> NetStates i hs o
+        -> [R i]
+        -> (Deltas i hs o, NetworkU i hs o)
     goTS (force-> !x) (force-> !s) inps =
         case inps of
           []    -> let (force-> !d, force-> !nu) = trainFinal x s
@@ -212,16 +269,17 @@ trainSeries (NA f g) step stepS targ inps0 n0 =
                 -- can "run" values from runNetworkU be re-used here?
                 (d', nu) = trainSample x' s d
             in  (d', nu + nus)
-    trainFinal :: R i
-               -> NetStates i hs o
-               -> (Deltas i hs o, NetworkU i hs o)
+    trainFinal
+        :: R i
+        -> NetStates i hs o
+        -> (Deltas i hs o, NetworkU i hs o)
     trainFinal = go nu0
       where
-        go :: forall j js. KnownNat j
-           => NetworkU j js o
-           -> R j
-           -> NetStates j js o
-           -> (Deltas j js o, NetworkU j js o)
+        go  :: forall j js. KnownNat j
+            => NetworkU j js o
+            -> R j
+            -> NetStates j js o
+            -> (Deltas j js o, NetworkU j js o)
         go nu x ns =
           case nu of
             NetUOL l@(FLayer _ w) ->
@@ -249,18 +307,20 @@ trainSeries (NA f g) step stepS targ inps0 n0 =
                       shiftsWS = outer dEdy s
                       shiftsB = dEdy -- should be dEdy * 1
                   in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
-    trainSample :: R i
-                -> NetStates i hs o
-                -> Deltas i hs o
-                -> (Deltas i hs o, NetworkU i hs o)
+                _ -> error "impossible."
+    trainSample
+        :: R i
+        -> NetStates i hs o
+        -> Deltas i hs o
+        -> (Deltas i hs o, NetworkU i hs o)
     trainSample = go nu0
       where
-        go :: forall j js. KnownNat j
-           => NetworkU j js o
-           -> R j
-           -> NetStates j js o
-           -> Deltas j js o
-           -> (Deltas j js o, NetworkU j js o)
+        go  :: forall j js. KnownNat j
+            => NetworkU j js o
+            -> R j
+            -> NetStates j js o
+            -> Deltas j js o
+            -> (Deltas j js o, NetworkU j js o)
         go nu x ns ds =
           case nu of
             NetUOL _ -> (DeltasOL 0, NetUOL 0)
@@ -283,32 +343,6 @@ trainSeries (NA f g) step stepS targ inps0 n0 =
                           shiftsWS = outer dEdy s
                           shiftsB = dEdy -- should be dEdy * 1
                       in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
-    trainStates :: forall j hs'. KnownNat j
-                => NetworkU j hs' o
-                -> NetStates j hs' o
-                -> Deltas j hs' o
-                -> Network j hs' o
-    trainStates nu ns ds =
-      case nu of
-        NetUOL l -> NetOL l
-        NetUIL (RLayerU b wI wS :: RLayerU j k) (nu' :: NetworkU k ks o) ->
-          case ns of
-            NetSIL s ns' ->
-              case ds of
-                DeltasIL _ (delS :: R k) ds' ->
-                  let s' = s - konst stepS * delS
-                  in  RLayer b wI wS s' `NetIL` trainStates nu' ns' ds'
-                _ -> error "impossible.  nu and ds should be same constructors."
-            _ -> error "impossible.  nu and ns should be same constructors."
-
-trainSeriesDO :: forall i hs o m. (KnownNet i hs o, MonadRandom m)
-              => NeuralActs (Forward Double)
-              -> Double
-              -> Double
-              -> Double
-              -> R o
-              -> [R i]
-              -> Network i hs o
-              -> m (Network i hs o)
-trainSeriesDO (NA f g) doRate step stepS targ inps0 n0 = undefined
+                    _ -> error "impossible!"
+                _ -> error "impossible!"
 
