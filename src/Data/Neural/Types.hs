@@ -15,7 +15,18 @@
 {-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UndecidableInstances       #-}
 
-module Data.Neural.Types where
+module Data.Neural.Types (
+    Node(..)
+  , FLayer(..)
+  , SomeFLayer(..)
+  , NetStruct(..)
+  , KnownNet
+  , NeuralActs(..)
+  , Activation(..)
+  , NASpec(..)
+  , tFLayerNodes
+  , tNodeWeights
+  ) where
 
 import Control.Applicative
 import Control.Arrow
@@ -24,6 +35,7 @@ import Control.Lens
 import Control.Monad.Trans.State
 import Data.Foldable
 import Data.Monoid
+import Data.Neural.Activation
 import Data.Proxy
 import Data.Reflection
 import GHC.Generics
@@ -44,9 +56,6 @@ data Node :: Nat -> * -> * where
 newtype FLayer :: Nat -> Nat -> * -> * where
     FLayer :: { layerNodes :: V o (Node i a) } -> FLayer i o a
   deriving (Show, Foldable, Traversable, Functor, Generic)
-
-data NeuralActs :: * -> * where
-    NA :: { naInner :: a -> a, naOuter :: a -> a } -> NeuralActs a
 
 data SomeFLayer :: * -> * where
     SomeFLayer :: (KnownNat i, KnownNat o) => FLayer i o a -> SomeFLayer a

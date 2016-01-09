@@ -343,6 +343,9 @@ tRNodeSWeights f n = (\w -> n { rNodeSWeights = w }) <$> f (rNodeSWeights n)
 tRNodeIWeights :: Lens (RNode i s a) (RNode i' s a) (V i a) (V i' a)
 tRNodeIWeights f n = (\w -> n { rNodeIWeights = w }) <$> f (rNodeIWeights n)
 
+tRNodeWeights :: Lens' (RNode i s a) (V i a, V s a)
+tRNodeWeights f n = (\(wI, wS) -> n { rNodeIWeights = wI, rNodeSWeights = wS })
+                <$> f (rNodeIWeights n, rNodeSWeights n)
 
 -- | Validating
 

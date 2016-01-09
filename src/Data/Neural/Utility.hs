@@ -36,16 +36,6 @@ unzipV3 (V v) = (V x, V y, V z)
 {-# INLINE unzipV3 #-}
 
 
-logistic :: Floating a => a -> a
-logistic = recip . (+ 1) . exp . negate
-{-# INLINE logistic #-}
-
-naLogId :: Floating a => NeuralActs a
-naLogId = NA logistic id
-
-naLogLog :: Floating a => NeuralActs a
-naLogLog = NA logistic logistic
-
 vToR :: KnownNat n => V n Double -> H.R n
 vToR (V v) = fromJust $ H.create (VG.convert v)
 

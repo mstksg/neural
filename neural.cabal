@@ -27,6 +27,7 @@ library
                        Data.Neural.Recurrent.Modify
                        Data.Neural.Recurrent.Train
                        Data.Neural.Utility
+                       Data.Neural.Activation
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9

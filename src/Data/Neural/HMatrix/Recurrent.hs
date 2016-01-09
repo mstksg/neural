@@ -17,23 +17,23 @@ module Data.Neural.HMatrix.Recurrent where
 
 -- import Data.Containers
 import Control.DeepSeq
-import Control.Monad.Random                as R
+import Control.Monad.Random            as R
 import Control.Monad.State
 import Data.MonoTraversable
-import Data.Neural.Types                   (KnownNet, NeuralActs(..))
+import Data.Neural.Types               (KnownNet, NeuralActs(..))
 import Data.Proxy
 import Data.Reflection
-import GHC.Generics                        (Generic)
+import GHC.Generics                    (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
 import Numeric.LinearAlgebra.Static
-import qualified Data.Binary               as B
-import qualified Data.Neural.Recurrent     as N
-import qualified Data.Neural.Types         as N
-import qualified Data.Vector               as V
-import qualified Data.Vector.Generic       as VG
-import qualified Linear.V                  as L
-import qualified Numeric.LinearAlgebra     as H
+import qualified Data.Binary           as B
+import qualified Data.Neural.Recurrent as N
+import qualified Data.Neural.Types     as N
+import qualified Data.Vector           as V
+import qualified Data.Vector.Generic   as VG
+import qualified Linear.V              as L
+import qualified Numeric.LinearAlgebra as H
 
 data FLayer :: Nat -> Nat -> * where
     FLayer :: { fLayerBiases  :: !(R o)
