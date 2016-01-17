@@ -17,9 +17,6 @@ extra-deps:
   - finite-typelits-0.1.0.0
   - type-combinators-0.2.2.0
 
-subdirs:
-  - "i'm okay"
-
 # Override default flag values for local packages and extra-deps
 flags: {}
 
