@@ -300,6 +300,10 @@ instance (KnownNat i, KnownNat o) => B.Binary (OpaqueNet i o) where
             return $ case nqo of
               OpaqueNet n -> OpaqueNet $ l `NetIL` n
 
+netActsOut :: NetActs i hs o -> R o
+netActsOut n = case n of
+                 NetAIL _ n' -> netActsOut n'
+                 NetAOL l    -> l
 
 runFLayer :: (KnownNat i, KnownNat o) => FLayer i o -> R i -> R o
 runFLayer (FLayer b w) v = b + w #> v
@@ -415,6 +419,128 @@ runNetStreamActs_ na = go
                   in  u `deepseq` n' `deepseq` u : go n' vs
     go _ []     = []
 {-# INLINE runNetStreamActs_ #-}
+
+runNetFeedback :: forall i hs o. (KnownNat i, KnownNat o)
+               => NeuralActs Double
+               -> (R o -> R i)
+               -> Network i hs o
+               -> R i
+               -> [(R o, Network i hs o)]
+runNetFeedback na nxt = go
+  where
+    go :: Network i hs o -> R i -> [(R o, Network i hs o)]
+    go n v = let res@(v', n') = runNetwork na n v
+             in  res : go n' (nxt v')
+{-# INLINE runNetFeedback #-}
+
+runNetFeedback_ :: forall i hs o. (KnownNat i, KnownNat o)
+                => NeuralActs Double
+                -> (R o -> R i)
+                -> Network i hs o
+                -> R i
+                -> [R o]
+runNetFeedback_ na nxt = go
+  where
+    go :: Network i hs o -> R i -> [R o]
+    go n v = let (v', n') = runNetwork na n v
+             in  v' : go n' (nxt v')
+{-# INLINE runNetFeedback_ #-}
+
+runNetFeedbackM :: forall i hs o m. (KnownNat i, Monad m, KnownNat o)
+                => NeuralActs Double
+                -> (R o -> m (R i))
+                -> Network i hs o
+                -> Int
+                -> R i
+                -> m [(R o, Network i hs o)]
+runNetFeedbackM na nxt = go
+  where
+    go :: Network i hs o -> Int -> R i -> m [(R o, Network i hs o)]
+    go n i v | i <= 0    = return []
+             | otherwise = do
+                 let vn'@(v', n') = runNetwork na n v
+                 vsns <- go n' (i - 1) =<< nxt v'
+                 return $ vn' : vsns
+
+runNetFeedbackM_ :: forall i hs o m. (KnownNat i, Monad m, KnownNat o)
+                 => NeuralActs Double
+                 -> (R o -> m (R i))
+                 -> Network i hs o
+                 -> Int
+                 -> R i
+                 -> m [R o]
+runNetFeedbackM_ na nxt = go
+  where
+    go :: Network i hs o -> Int -> R i -> m [R o]
+    go n i v | i <= 0    = return []
+             | otherwise = do
+                 let (v', n') = runNetwork na n v
+                 vs <- go n' (i - 1) =<< nxt v'
+                 return $ v' : vs
+
+runNetActsFeedback
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    => NeuralActs Double
+    -> (R o -> R i)
+    -> Network i hs o
+    -> R i
+    -> [(NetActs i hs o, Network i hs o)]
+runNetActsFeedback na nxt = go
+  where
+    go :: Network i hs o -> R i -> [(NetActs i hs o, Network i hs o)]
+    go n v = let res@(nacts, n') = runNetworkActs na n v
+                 v' = netActsOut nacts
+             in  res : go n' (nxt v')
+
+runNetActsFeedback_
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    => NeuralActs Double
+    -> (R o -> R i)
+    -> Network i hs o
+    -> R i
+    -> [NetActs i hs o]
+runNetActsFeedback_ na nxt = go
+  where
+    go :: Network i hs o -> R i -> [NetActs i hs o]
+    go n v = let (nacts, n') = runNetworkActs na n v
+                 v' = netActsOut nacts
+             in  nacts : go n' (nxt v')
+
+runNetActsFeedbackM
+    :: forall i hs o m. (KnownNat i, Monad m, KnownNat o)
+    => NeuralActs Double
+    -> (R o -> m (R i))
+    -> Network i hs o
+    -> Int
+    -> R i
+    -> m [(NetActs i hs o, Network i hs o)]
+runNetActsFeedbackM na nxt = go
+  where
+    go :: Network i hs o -> Int -> R i -> m [(NetActs i hs o, Network i hs o)]
+    go n i v | i <= 0    = return []
+             | otherwise = do
+                 let res@(nacts, n') = runNetworkActs na n v
+                     v' = netActsOut nacts
+                 vsns <- go n' (i - 1) =<< nxt v'
+                 return $ res : vsns
+
+runNetActsFeedbackM_
+    :: forall i hs o m. (KnownNat i, Monad m, KnownNat o)
+    => NeuralActs Double
+    -> (R o -> m (R i))
+    -> Network i hs o
+    -> Int
+    -> R i
+    -> m [NetActs i hs o]
+runNetActsFeedbackM_ na nxt = go
+  where
+    go :: Network i hs o -> Int -> R i -> m [NetActs i hs o]
+    go n i v | i <= 0    = return []
+             | otherwise = do
+                 let (nacts, n') = runNetworkActs na n v
+                     v' = netActsOut nacts
+                 ns <- go n' (i - 1) =<< nxt v'
+                 return $ nacts : ns
 
 
 fLayerFromHMat :: (KnownNat i, KnownNat o) => FLayer i o ->  N.FLayer i o Double

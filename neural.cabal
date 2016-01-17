@@ -18,16 +18,17 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Data.Neural.Types
                        -- Data.Neural.Recurrent.Significance
+                       Data.Neural.Activation
                        Data.Neural.FeedForward
                        Data.Neural.HMatrix.Recurrent
                        Data.Neural.HMatrix.Recurrent.Dropout
+                       Data.Neural.HMatrix.Recurrent.Significance
                        Data.Neural.HMatrix.Recurrent.Train
                        Data.Neural.Recurrent
                        Data.Neural.Recurrent.Dropout
                        Data.Neural.Recurrent.Modify
                        Data.Neural.Recurrent.Train
                        Data.Neural.Utility
-                       Data.Neural.Activation
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.8 && <4.9

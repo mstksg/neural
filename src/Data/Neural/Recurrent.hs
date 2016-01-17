@@ -141,6 +141,12 @@ runRLayerS :: forall i o a m. (KnownNat i, KnownNat o, Num a, MonadState (RLayer
 runRLayerS f v = state (\l -> runRLayer f l v)
 {-# INLINE runRLayerS #-}
 
+netActsOut :: NetActs i hs o a -> V o a
+netActsOut n = case n of
+                 NetAIL _ n' -> netActsOut n'
+                 NetAOL l    -> l
+
+
 runNetwork :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
            => NeuralActs a
            -> Network i hs o a
@@ -200,11 +206,12 @@ runNetStream :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
 runNetStream na n vs = runState (mapM (runNetworkS na) vs) n
 {-# INLINE runNetStream #-}
 
-runNetStream_ :: forall i hs o a. (Num a, KnownNat i, KnownNat o, NFData a)
-              => NeuralActs a
-              -> Network i hs o a
-              -> [V i a]
-              -> [V o a]
+runNetStream_
+    :: forall i hs o a. (Num a, KnownNat i, KnownNat o, NFData a)
+    => NeuralActs a
+    -> Network i hs o a
+    -> [V i a]
+    -> [V o a]
 runNetStream_ na = go
   where
     go :: Network i hs o a -> [V i a] -> [V o a]
@@ -212,6 +219,19 @@ runNetStream_ na = go
                   in  u `deepseq` n' `deepseq` u : go n' vs
     go _ []     = []
 {-# INLINE runNetStream_ #-}
+
+prerunNetStream
+    :: forall i hs o a. (Num a, KnownNat i, KnownNat o, NFData a)
+    => NeuralActs a
+    -> Network i hs o a
+    -> [V i a]
+    -> Network i hs o a
+prerunNetStream na = go
+  where
+    go :: Network i hs o a -> [V i a] -> Network i hs o a
+    go n (v:vs) = let (_, n') = runNetwork na n v
+                  in  n' `deepseq` go n' vs
+    go n []     = n
 
 runNetStreamActs :: forall i hs o a. (Num a, KnownNat i)
                  => NeuralActs a
@@ -278,6 +298,26 @@ runNetFeedbackM_ na nxt = go
                  let (v', n') = runNetwork na n v
                  vs <- go n' (i - 1) =<< nxt v'
                  return $ v' : vs
+
+runNetActsFeedbackM_
+    :: forall i hs o m a. (Num a, KnownNat i, Monad m, KnownNat o)
+    => NeuralActs a
+    -> (V o a -> m (V i a))
+    -> Network i hs o a
+    -> Int
+    -> V i a
+    -> m [NetActs i hs o a]
+runNetActsFeedbackM_ na nxt = go
+  where
+    go :: Network i hs o a -> Int -> V i a -> m [NetActs i hs o a]
+    go n i v | i <= 0    = return []
+             | otherwise = do
+                 let (nacts, n') = runNetworkActs na n v
+                     v' = netActsOut nacts
+                 ns <- go n' (i - 1) =<< nxt v'
+                 return $ nacts : ns
+
+
 
 randomNetwork :: (MonadRandom m, Random (Network i hs o a), Num a)
               => m (Network i hs o a)
