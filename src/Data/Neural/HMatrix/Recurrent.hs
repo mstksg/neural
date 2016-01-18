@@ -571,7 +571,7 @@ fLayerFromV (N.FLayer n) = FLayer b w
     Just w = create . H.fromRows . toList $ VG.convert . L.toVector . N.nodeWeights <$> n
 
 rLayerFromV :: (KnownNat i, KnownNat o) => N.RLayer i o Double -> RLayer i o
-rLayerFromV (N.RLayer n s0) = RLayer b wS wI s
+rLayerFromV (N.RLayer n s0) = RLayer b wI wS s
   where
     Just b = create . VG.convert . L.toVector $ N.rNodeBias <$> n
     Just wI = create . H.fromRows . toList $ VG.convert . L.toVector . N.rNodeIWeights <$> n
