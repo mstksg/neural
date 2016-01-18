@@ -18,6 +18,7 @@ module Data.Neural.HMatrix.Recurrent where
 -- import Data.Containers
 import Control.DeepSeq
 import Control.Monad.Random            as R
+import Data.Foldable
 import Control.Monad.State
 import Data.MonoTraversable
 import Data.Neural.Types               (KnownNet, NeuralActs(..))
@@ -563,3 +564,21 @@ networkFromHMat n = case n of
                       NetOL l    -> N.NetOL (fLayerFromHMat l)
                       NetIL l n' -> rLayerFromHMat l `N.NetIL` networkFromHMat n'
 
+fLayerFromV :: (KnownNat i, KnownNat o) => N.FLayer i o Double -> FLayer i o
+fLayerFromV (N.FLayer n) = FLayer b w
+  where
+    Just b = create . VG.convert . L.toVector $ N.nodeBias <$> n
+    Just w = create . H.fromRows . toList $ VG.convert . L.toVector . N.nodeWeights <$> n
+
+rLayerFromV :: (KnownNat i, KnownNat o) => N.RLayer i o Double -> RLayer i o
+rLayerFromV (N.RLayer n s0) = RLayer b wS wI s
+  where
+    Just b = create . VG.convert . L.toVector $ N.rNodeBias <$> n
+    Just wI = create . H.fromRows . toList $ VG.convert . L.toVector . N.rNodeIWeights <$> n
+    Just wS = create . H.fromRows . toList $ VG.convert . L.toVector . N.rNodeSWeights <$> n
+    Just s = create . VG.convert . L.toVector $ s0
+
+networkFromV :: KnownNet i hs o => N.Network i hs o Double -> Network i hs o
+networkFromV n = case n of
+                   N.NetOL l    -> NetOL (fLayerFromV l)
+                   N.NetIL l n' -> rLayerFromV l `NetIL` networkFromV n'
