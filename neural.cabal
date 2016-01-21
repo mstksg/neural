@@ -34,8 +34,9 @@ library
   build-depends:       base >=4.8 && <4.9
                      , MonadRandom
                      , ad
-                     , binary
+                     -- , binary
                      , constraints
+                     , bytes
                      , deepseq
                      , finite-typelits
                      , hmatrix

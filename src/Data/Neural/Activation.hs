@@ -6,8 +6,9 @@
 
 module Data.Neural.Activation where
 
+-- import qualified Data.Binary    as B
 import GHC.Generics
-import qualified Data.Binary as B
+import qualified Data.Bytes.Serial as S
 
 data NeuralActs :: * -> * where
     NA :: { naInternal :: a -> a, naOuter :: a -> a } -> NeuralActs a
@@ -28,8 +29,8 @@ data NASpec :: * where
     NASpec :: !Activation -> !Activation -> NASpec
   deriving (Show, Eq, Read, Generic)
 
-instance B.Binary Activation
-instance B.Binary NASpec
+instance S.Serial Activation
+instance S.Serial NASpec
 
 -- normalize to get rid of Scaled (Expand (Scaled ..))
 reduceAct :: Activation -> Activation
