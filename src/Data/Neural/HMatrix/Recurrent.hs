@@ -1,12 +1,13 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE DataKinds            #-}
 {-# LANGUAGE DeriveGeneric        #-}
-{-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE GADTs                #-}
+{-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE KindSignatures       #-}
-{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE RankNTypes           #-}
+{-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE StandaloneDeriving   #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE TypeOperators        #-}
@@ -25,6 +26,7 @@ import Data.MonoTraversable
 import Data.Neural.Types               (KnownNet, NeuralActs(..))
 import Data.Proxy
 import Data.Reflection
+import Data.Vector.Serialize
 import GHC.Generics                    (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
@@ -301,6 +303,9 @@ instance (KnownNat i, KnownNat o) => S.Serialize (OpaqueNet i o) where
             nqo <- S.get :: S.Get (OpaqueNet j o)
             return $ case nqo of
               OpaqueNet n -> OpaqueNet $ l `NetIL` n
+
+-- instance S.Serialize (H.Matrix Double)
+-- deriving instance Generic (H.Matrix Double)
 
 netActsOut :: NetActs i hs o -> R o
 netActsOut n = case n of
