@@ -28,6 +28,7 @@ module Data.Neural.Types (
   , tNodeWeights
   ) where
 
+-- import qualified Data.Binary    as B
 import Control.Applicative
 import Control.Arrow
 import Control.DeepSeq
@@ -44,8 +45,9 @@ import GHC.TypeLits.List
 import Linear
 import Linear.V
 import System.Random
-import qualified Data.Binary     as B
-import qualified Data.Vector     as V
+import qualified Data.Bytes.Get    as S
+import qualified Data.Bytes.Serial as S
+import qualified Data.Vector       as V
 
 -- | Types
 
@@ -176,14 +178,14 @@ instance (KnownNat i, Random a) => Random (Node i a) where
         let (b, g') = randomR (bmn, bmx) g
         in  first (Node b) (randomR (wmn, wmx) g')
 
-instance (KnownNat i, B.Binary a) => B.Binary (Node i a)
+instance (KnownNat i, S.Serial a) => S.Serial (Node i a)
 
 instance NFData a => NFData (Node i a)
 
 -- | * FLayer
 
 instance NFData a => NFData (FLayer i o a)
-instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (FLayer i o a)
+instance (KnownNat i, KnownNat o, S.Serial a) => S.Serial (FLayer i o a)
 
 instance (KnownNat i, KnownNat o) => Additive (FLayer i o) where
     zero = FLayer $ pure zero
@@ -215,18 +217,18 @@ deriving instance Functor SomeFLayer
 deriving instance Foldable SomeFLayer
 deriving instance Traversable SomeFLayer
 
-instance B.Binary a => B.Binary (SomeFLayer a) where
-    put sl = case sl of
+instance S.Serial a => S.Serial (SomeFLayer a) where
+    serialize sl = case sl of
                SomeFLayer (l :: FLayer i o a) -> do
-                 B.put $ natVal (Proxy :: Proxy i)
-                 B.put $ natVal (Proxy :: Proxy o)
-                 B.put l
-    get = do
-      i <- B.get
-      o <- B.get
+                 S.serialize $ natVal (Proxy :: Proxy i)
+                 S.serialize $ natVal (Proxy :: Proxy o)
+                 S.serialize l
+    deserialize = do
+      i <- S.deserialize
+      o <- S.deserialize
       reifyNat i $ \(Proxy :: Proxy i) ->
         reifyNat o $ \(Proxy :: Proxy o) ->
-          SomeFLayer <$> (B.get :: B.Get (FLayer i o a))
+          SomeFLayer <$> (S.deserialize :: S.MonadGet m => m (FLayer i o a))
 
 
 tFLayerNodes :: Lens (FLayer i o a) (FLayer i' o' a) (V o (Node i a)) (V o' (Node i' a))
