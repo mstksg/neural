@@ -209,17 +209,17 @@ instance (KnownNat i, KnownNat o) => S.Serial (FLayer i o) where
 instance (KnownNat i, KnownNat o) => S.Serial (RLayer i o) where
 
 instance (KnownNat n, KnownNat m) => S.Serial (L n m) where
-    serialize l = S.serialize (unwrap l)
+    serialize l = S.store (unwrap l)
     deserialize   = do
-      m <- S.deserialize
+      m <- S.restore
       case create m of
         Just l  -> return l
         Nothing -> fail "L: Improper stored matrix size"
 
 instance (KnownNat n) => S.Serial (R n) where
-    serialize l = S.serialize (unwrap l)
+    serialize l = S.store (unwrap l)
     deserialize   = do
-      v <- S.deserialize
+      v <- S.restore
       case create v of
         Just l  -> return l
         Nothing -> fail "R: Improper stored vector size"
