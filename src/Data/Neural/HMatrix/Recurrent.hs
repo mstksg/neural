@@ -16,10 +16,11 @@
 module Data.Neural.HMatrix.Recurrent where
 
 -- import Data.Containers
+-- import qualified Data.Binary        as B
 import Control.DeepSeq
 import Control.Monad.Random            as R
-import Data.Foldable
 import Control.Monad.State
+import Data.Foldable
 import Data.MonoTraversable
 import Data.Neural.Types               (KnownNet, NeuralActs(..))
 import Data.Proxy
@@ -28,9 +29,9 @@ import GHC.Generics                    (Generic)
 import GHC.TypeLits
 import GHC.TypeLits.List
 import Numeric.LinearAlgebra.Static
-import qualified Data.Binary           as B
 import qualified Data.Neural.Recurrent as N
 import qualified Data.Neural.Types     as N
+import qualified Data.Serialize        as S
 import qualified Data.Vector           as V
 import qualified Data.Vector.Generic   as VG
 import qualified Linear.V              as L
@@ -217,87 +218,87 @@ instance NFData (NetActs i hs o) where
     rnf (NetAOL (force -> !_)) = ()
     rnf (NetAIL (force -> !_) (force -> !_)) = ()
 
-instance (KnownNat i, KnownNat o) => B.Binary (FLayer i o) where
-instance (KnownNat i, KnownNat o) => B.Binary (RLayer i o) where
+instance (KnownNat i, KnownNat o) => S.Serialize (FLayer i o) where
+instance (KnownNat i, KnownNat o) => S.Serialize (RLayer i o) where
 
-instance (KnownNat n, KnownNat m) => B.Binary (L n m) where
-    put l = B.put (unwrap l)
+instance (KnownNat n, KnownNat m) => S.Serialize (L n m) where
+    put l = S.put (unwrap l)
     get   = do
-      m <- B.get
+      m <- S.get
       case create m of
         Just l  -> return l
         Nothing -> fail "L: Improper stored matrix size"
 
-instance (KnownNat n) => B.Binary (R n) where
-    put l = B.put (unwrap l)
+instance (KnownNat n) => S.Serialize (R n) where
+    put l = S.put (unwrap l)
     get   = do
-      v <- B.get
+      v <- S.get
       case create v of
         Just l  -> return l
         Nothing -> fail "R: Improper stored vector size"
 
-instance B.Binary SomeFLayer where
+instance S.Serialize SomeFLayer where
     put sl = case sl of
                SomeFLayer (l :: FLayer i o) -> do
-                 B.put $ natVal (Proxy :: Proxy i)
-                 B.put $ natVal (Proxy :: Proxy o)
-                 B.put l
+                 S.put $ natVal (Proxy :: Proxy i)
+                 S.put $ natVal (Proxy :: Proxy o)
+                 S.put l
     get = do
-      i <- B.get
-      o <- B.get
+      i <- S.get
+      o <- S.get
       reifyNat i $ \(Proxy :: Proxy i) ->
         reifyNat o $ \(Proxy :: Proxy o) ->
-          SomeFLayer <$> (B.get :: B.Get (FLayer i o))
+          SomeFLayer <$> (S.get :: S.Get (FLayer i o))
 
-instance KnownNet i hs o => B.Binary (Network i hs o) where
-    put (NetOL l)    = B.put l
-    put (NetIL l n') = B.put l *> B.put n'
+instance KnownNet i hs o => S.Serialize (Network i hs o) where
+    put (NetOL l)    = S.put l
+    put (NetIL l n') = S.put l *> S.put n'
     get = go natsList
       where
         go :: forall j js. KnownNat j
            => NatList js
-           -> B.Get (Network j js o)
+           -> S.Get (Network j js o)
         go nl = case nl of
-                  ØNL       -> NetOL <$> B.get
-                  _ :<# nl' -> NetIL <$> B.get <*> go nl'
+                  ØNL       -> NetOL <$> S.get
+                  _ :<# nl' -> NetIL <$> S.get <*> go nl'
 
-instance B.Binary SomeNet where
+instance S.Serialize SomeNet where
     put sn = case sn of
                SomeNet (n :: Network i hs o) -> do
-                 B.put $ natVal (Proxy :: Proxy i)
-                 B.put $ natVal (Proxy :: Proxy o)
-                 B.put $ OpaqueNet n
+                 S.put $ natVal (Proxy :: Proxy i)
+                 S.put $ natVal (Proxy :: Proxy o)
+                 S.put $ OpaqueNet n
     get = do
-      i <- B.get
-      o <- B.get
+      i <- S.get
+      o <- S.get
       reifyNat i $ \(Proxy :: Proxy i) ->
         reifyNat o $ \(Proxy :: Proxy o) -> do
-          oqn <- B.get :: B.Get (OpaqueNet i o)
+          oqn <- S.get :: S.Get (OpaqueNet i o)
           return $ case oqn of
                      OpaqueNet n -> SomeNet n
 
-instance (KnownNat i, KnownNat o) => B.Binary (OpaqueNet i o) where
+instance (KnownNat i, KnownNat o) => S.Serialize (OpaqueNet i o) where
     put oqn = case oqn of
                 OpaqueNet n -> do
                   case n of
                     NetOL l -> do
-                      B.put True
-                      B.put l
+                      S.put True
+                      S.put l
                     NetIL (l :: RLayer i j) (n' :: Network j js o) -> do
-                      B.put False
-                      B.put $ natVal (Proxy :: Proxy j)
-                      B.put l
-                      B.put (OpaqueNet n')
+                      S.put False
+                      S.put $ natVal (Proxy :: Proxy j)
+                      S.put l
+                      S.put (OpaqueNet n')
     get = do
-      isOL <- B.get
+      isOL <- S.get
       if isOL
         then do
-          OpaqueNet . NetOL <$> B.get
+          OpaqueNet . NetOL <$> S.get
         else do
-          j <- B.get
+          j <- S.get
           reifyNat j $ \(Proxy :: Proxy j) -> do
-            l   <- B.get :: B.Get (RLayer i j)
-            nqo <- B.get :: B.Get (OpaqueNet j o)
+            l   <- S.get :: S.Get (RLayer i j)
+            nqo <- S.get :: S.Get (OpaqueNet j o)
             return $ case nqo of
               OpaqueNet n -> OpaqueNet $ l `NetIL` n
 
