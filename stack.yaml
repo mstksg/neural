@@ -8,7 +8,7 @@ packages:
   - '.'
   - location:
       git: https://github.com/mstksg/hmatrix
-      commit: d64d1b468197198213c850c47f7fe79bd3b1a2ab
+      commit: 9695cc375e78cf89e175353fbcb2801205f79391
     subdirs:
       - packages/base
 
