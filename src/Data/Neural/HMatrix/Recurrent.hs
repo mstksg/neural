@@ -18,9 +18,10 @@ module Data.Neural.HMatrix.Recurrent where
 -- import Data.Containers
 import Control.DeepSeq
 import Control.Monad.Random            as R
-import Data.Foldable
 import Control.Monad.State
+import Data.Foldable
 import Data.MonoTraversable
+import Data.Neural.HMatrix.Utility
 import Data.Neural.Types               (KnownNet, NeuralActs(..))
 import Data.Proxy
 import Data.Reflection
@@ -164,34 +165,19 @@ zipNet ff fr = go
                        error "impossible"
 
 
--- TODO: can be done better now
-randomVec :: forall g n. (RandomGen g, KnownNat n)
-          => (Double, Double) -> g -> (R n, g)
-randomVec r = runRand $
-  fmap vector . replicateM (fromInteger (natVal (Proxy :: Proxy n))) $
-    getRandomR r
-
-randomMat :: forall g n m. (RandomGen g, KnownNat n, KnownNat m)
-          => (Double, Double) -> g -> (L n m, g)
-randomMat r = runRand $
-    fmap matrix . replicateM (fromInteger s) $
-      getRandomR r
-  where
-    s = natVal (Proxy :: Proxy n) * natVal (Proxy :: Proxy m)
-
 
 instance (KnownNat i, KnownNat o) => Random (FLayer i o) where
     random = runRand $
-        FLayer <$> liftRand (randomVec (-1, 1))
-               <*> liftRand (randomMat (-1, 1))
+        FLayer <$> randomVec (-1, 1)
+               <*> randomMat (-1, 1)
     randomR  = error "FLayer i o (randomR): Unimplemented"
 
 instance (KnownNat i, KnownNat o) => Random (RLayer i o) where
     random = runRand $
-        RLayer <$> liftRand (randomVec (-1, 1))
-               <*> liftRand (randomMat (-1, 1))
-               <*> liftRand (randomMat (-1, 1))
-               <*> liftRand (randomVec (-1, 1))
+        RLayer <$> randomVec (-1, 1)
+               <*> randomMat (-1, 1)
+               <*> randomMat (-1, 1)
+               <*> randomVec (-1, 1)
     randomR  = error "RLayer i o (randomR): Unimplemented"
 
 instance KnownNet i hs o => Random (Network i hs o) where

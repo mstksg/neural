@@ -22,8 +22,10 @@ library
                        Data.Neural.FeedForward
                        Data.Neural.HMatrix.Recurrent
                        Data.Neural.HMatrix.Recurrent.Dropout
+                       Data.Neural.HMatrix.Recurrent.Generate
                        Data.Neural.HMatrix.Recurrent.Significance
                        Data.Neural.HMatrix.Recurrent.Train
+                       Data.Neural.HMatrix.Utility
                        Data.Neural.Recurrent
                        Data.Neural.Recurrent.Dropout
                        Data.Neural.Recurrent.Modify
