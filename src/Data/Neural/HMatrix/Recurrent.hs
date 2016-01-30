@@ -16,7 +16,7 @@
 module Data.Neural.HMatrix.Recurrent where
 
 -- import Data.Containers
--- import qualified Data.Binary        as B
+import qualified Data.Binary        as B
 import Control.DeepSeq
 import Control.Monad.Random            as R
 import Control.Monad.State
@@ -31,6 +31,7 @@ import GHC.TypeLits
 import GHC.TypeLits.List
 import Numeric.LinearAlgebra.Static
 import qualified Data.Bytes.Get        as S
+import qualified Data.Bytes.Put        as S
 import qualified Data.Bytes.Serial     as S
 import qualified Data.Neural.Recurrent as N
 import qualified Data.Neural.Types     as N
@@ -209,7 +210,7 @@ instance (KnownNat i, KnownNat o) => S.Serial (FLayer i o) where
 instance (KnownNat i, KnownNat o) => S.Serial (RLayer i o) where
 
 instance (KnownNat n, KnownNat m) => S.Serial (L n m) where
-    serialize l = S.store (unwrap l)
+    serialize l = S.putLazyByteString $ B.encode (unwrap l)
     deserialize   = do
       m <- S.restore
       case create m of
