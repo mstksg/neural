@@ -393,8 +393,6 @@ instance Control.DeepSeq.NFData (Data.Neural.HMatrix.Recurrent.Network i hs o)
 instance Control.DeepSeq.NFData (Data.Neural.HMatrix.Recurrent.NetActs i hs o)
 instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class.Binary (Data.Neural.HMatrix.Recurrent.FLayer i o)
 instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class.Binary (Data.Neural.HMatrix.Recurrent.RLayer i o)
-instance (GHC.TypeLits.KnownNat n, GHC.TypeLits.KnownNat m) => Data.Binary.Class.Binary (Internal.Static.L n m)
-instance GHC.TypeLits.KnownNat n => Data.Binary.Class.Binary (Internal.Static.R n)
 instance Data.Binary.Class.Binary Data.Neural.HMatrix.Recurrent.SomeFLayer
 instance Data.Neural.Types.KnownNet i hs o => Data.Binary.Class.Binary (Data.Neural.HMatrix.Recurrent.Network i hs o)
 instance Data.Binary.Class.Binary Data.Neural.HMatrix.Recurrent.SomeNet
