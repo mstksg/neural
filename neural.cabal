@@ -40,9 +40,10 @@ library
                      , constraints
                      , deepseq
                      , finite-typelits
-                     , hmatrix
+                     , hmatrix >= 0.18
                      , lens
                      , linear
+                     , mono-traversable
                      , mtl
                      , random
                      , reflection
@@ -51,7 +52,6 @@ library
                      , type-combinators
                      , typelits-witnesses
                      , vector
-                     , mono-traversable
   hs-source-dirs:      src
   ghc-options:         -O2 -Wall
   default-language:    Haskell2010

@@ -206,22 +206,6 @@ instance NFData (NetActs i hs o) where
 instance (KnownNat i, KnownNat o) => B.Binary (FLayer i o) where
 instance (KnownNat i, KnownNat o) => B.Binary (RLayer i o) where
 
-instance (KnownNat n, KnownNat m) => B.Binary (L n m) where
-    put l = B.put (unwrap l)
-    get   = do
-      m <- B.get
-      case create m of
-        Just l  -> return l
-        Nothing -> fail "L: Improper stored matrix size"
-
-instance (KnownNat n) => B.Binary (R n) where
-    put l = B.put (unwrap l)
-    get   = do
-      v <- B.get
-      case create v of
-        Just l  -> return l
-        Nothing -> fail "R: Improper stored vector size"
-
 instance B.Binary SomeFLayer where
     put sl = case sl of
                SomeFLayer (l :: FLayer i o) -> do
