@@ -8,9 +8,6 @@
 @package neural
 @version 0.1.0.0
 
-module Data.Neural.HMatrix.Recurrent.Process
-processSeries :: KnownNat n => Vector (a, b) -> Vector (V n a, b)
-
 module Data.Neural.HMatrix.Utility
 randomVec :: (MonadRandom m, KnownNat n) => (Double, Double) -> m (R n)
 randomMat :: (MonadRandom f, KnownNat n, KnownNat m) => (Double, Double) -> f (L n m)
@@ -428,6 +425,7 @@ toNetworkU :: Network i hs o -> (NetStates i hs o, NetworkU i hs o)
 trainSeries :: KnownNet i hs o => NeuralActs (Forward Double) -> Double -> Double -> R o -> [R i] -> Network i hs o -> Network i hs o
 trainStates :: KnownNet i hs o => Double -> NetworkU i hs o -> NetStates i hs o -> Deltas i hs o -> Network i hs o
 bptt :: KnownNet i hs o => NeuralActs (Forward Double) -> Double -> R o -> [R i] -> NetStates i hs o -> NetworkU i hs o -> (Deltas i hs o, NetworkU i hs o)
+processSeries :: KnownNat n => Vector (a, b) -> Vector (V n a, b)
 instance GHC.Generics.Selector Data.Neural.HMatrix.Recurrent.Train.S1_0_2RLayerU
 instance GHC.Generics.Selector Data.Neural.HMatrix.Recurrent.Train.S1_0_1RLayerU
 instance GHC.Generics.Selector Data.Neural.HMatrix.Recurrent.Train.S1_0_0RLayerU
