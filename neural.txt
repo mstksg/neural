@@ -11,6 +11,8 @@
 module Data.Neural.HMatrix.Utility
 randomVec :: (MonadRandom m, KnownNat n) => (Double, Double) -> m (R n)
 randomMat :: (MonadRandom f, KnownNat n, KnownNat m) => (Double, Double) -> f (L n m)
+randomVecMWC :: (PrimMonad m, KnownNat n) => (Double, Double) -> Gen (PrimState m) -> m (R n)
+randomMatMWC :: (PrimMonad f, KnownNat n, KnownNat m) => (Double, Double) -> Gen (PrimState f) -> f (L n m)
 
 module Data.Neural.Activation
 data NeuralActs :: * -> *
@@ -434,6 +436,9 @@ module Data.Neural.HMatrix.Recurrent.Generate
 randomFLayer :: (MonadRandom m, KnownNat i, KnownNat o) => (Double, Double) -> m (FLayer i o)
 randomRLayer :: (MonadRandom m, KnownNat i, KnownNat o) => (Double, Double) -> m (RLayer i o)
 randomNet :: (MonadRandom m, KnownNet i hs o) => (Double, Double) -> m (Network i hs o)
+randomFLayerMWC :: (PrimMonad m, KnownNat i, KnownNat o) => (Double, Double) -> Gen (PrimState m) -> m (FLayer i o)
+randomRLayerMWC :: (PrimMonad m, KnownNat i, KnownNat o) => (Double, Double) -> Gen (PrimState m) -> m (RLayer i o)
+randomNetMWC :: (PrimMonad m, KnownNet i hs o) => (Double, Double) -> Gen (PrimState m) -> m (Network i hs o)
 
 module Data.Neural.HMatrix.Recurrent.Significance
 significances :: (KnownNet i hs o) => NeuralActs (Forward Double) -> Network i hs o -> NonEmpty (R i) -> NetSigs i hs o
