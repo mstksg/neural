@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE DataKinds            #-}
+{-# LANGUAGE LambdaCase           #-}
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE InstanceSigs         #-}
 {-# LANGUAGE FlexibleContexts     #-}
@@ -85,7 +86,15 @@ type instance Element (FLayer i o) = Double
 instance (KnownNat i, KnownNat o) => MonoFunctor (FLayer i o) where
     omap f (FLayer b w) = FLayer (dvmap f b) (dmmap f w)
 
--- instance MonoZip (FLayer i o) where
+type instance Element (RLayer i o) = Double
+
+instance (KnownNat i, KnownNat o) => MonoFunctor (RLayer i o) where
+    omap f (RLayer b wI wS s) = RLayer (dvmap f b)
+                                       (dmmap f wI)
+                                       (dmmap f wS)
+                                       (dvmap f s)
+
+-- instance MonoZpureNetip (FLayer i o) where
 --     ozipWith f (FLayer b1 w1) (FLayer b2 w2) = FLayer ()
 
 konstFLayer :: (KnownNat i, KnownNat o)
@@ -101,6 +110,11 @@ instance (KnownNat i, KnownNat o) => Num (FLayer i o) where
     negate (FLayer b w) = FLayer (negate b) (negate w)
     signum (FLayer b w) = FLayer (signum b) (signum w)
     fromInteger = FLayer <$> fromInteger <*> fromInteger
+
+instance (KnownNat i, KnownNat o) => Fractional (FLayer i o) where
+    FLayer b1 w1 / FLayer b2 w2 = FLayer (b1 / b2) (w1 / w2)
+    recip        = omap recip
+    fromRational = konstFLayer . fromRational
 
 konstRLayer :: (KnownNat i, KnownNat o)
             => Double
@@ -120,13 +134,18 @@ instance (KnownNat i, KnownNat o) => Num (RLayer i o) where
                                                          (wI1 - wI2)
                                                          (wS1 - wS2)
                                                          (s1  - s2)
-    abs    (RLayer b wI wS s) = RLayer (abs b) (abs wI) (abs wS) (abs s)
-    negate (RLayer b wI wS s) = RLayer (negate b) (negate wI) (negate wS) (negate s)
-    signum (RLayer b wI wS s) = RLayer (signum b) (signum wI) (signum wS) (signum s)
-    fromInteger = RLayer <$> fromInteger
-                         <*> fromInteger
-                         <*> fromInteger
-                         <*> fromInteger
+    abs    = omap abs
+    negate = omap negate
+    signum = omap signum
+    fromInteger = konstRLayer . fromInteger
+
+instance (KnownNat i, KnownNat o) => Fractional (RLayer i o) where
+    RLayer b1 wI1 wS1 s1 / RLayer b2 wI2 wS2 s2 = RLayer (b1  / b2)
+                                                         (wI1 / wI2)
+                                                         (wS1 / wS2)
+                                                         (s1  / s2)
+    recip (RLayer b wI wS s) = RLayer (recip b) (recip wI) (recip wS) (recip s)
+    fromRational = konstRLayer . fromRational
 
 
 pureNet :: forall i hs o. KnownNet i hs o
@@ -164,7 +183,25 @@ zipNet ff fr = go
                      _             ->
                        error "impossible"
 
+instance (KnownNat i, KnownNats hs, KnownNat o) => Num (Network i hs o) where
+    (+)         = zipNet (+) (+)
+    (-)         = zipNet (-) (-)
+    (*)         = zipNet (*) (*)
+    negate      = omap negate
+    abs         = omap abs
+    signum      = omap signum
+    fromInteger = konstNet . fromInteger
 
+instance (KnownNat i, KnownNats hs, KnownNat o) => Fractional (Network i hs o) where
+    (/)          = zipNet (/) (/)
+    recip        = omap recip
+    fromRational = konstNet . fromRational
+
+type instance Element (Network i hs o) = Double
+
+instance (KnownNat i, KnownNats hs, KnownNat o) => MonoFunctor (Network i hs o) where
+    omap f = \case NetOL l   -> NetOL (omap f l)
+                   NetIL l n -> NetIL (omap f l) (omap f n)
 
 instance (KnownNat i, KnownNat o) => Random (FLayer i o) where
     random = runRand $
