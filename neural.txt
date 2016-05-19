@@ -427,8 +427,6 @@ instance Data.Neural.Types.KnownNet i hs o => GHC.Num.Num (Data.Neural.HMatrix.R
 module Data.Neural.HMatrix.Recurrent.Dropout
 trainSeriesDO :: (KnownNet i hs o, MonadRandom m) => NeuralActs (Forward Double) -> Double -> Double -> Double -> R o -> [R i] -> Network i hs o -> m (Network i hs o)
 trainSeriesDOMWC :: (KnownNet i hs o, PrimMonad m) => NeuralActs (Forward Double) -> Double -> Double -> Double -> R o -> [R i] -> Network i hs o -> Gen (PrimState m) -> m (Network i hs o)
-
--- | Deprecated: literally wrong.
 compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
 instance GHC.Show.Show (Data.Neural.HMatrix.Recurrent.Dropout.NetMask i hs o)
 
