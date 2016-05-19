@@ -4,7 +4,10 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE GADTs #-}
 
-module Data.Neural.HMatrix.Recurrent.Significance where
+module Data.Neural.HMatrix.Recurrent.Significance
+  ( significances
+  )
+  where
 
 import Data.List.NonEmpty
 import Data.Neural.Activation

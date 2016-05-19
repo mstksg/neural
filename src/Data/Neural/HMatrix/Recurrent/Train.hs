@@ -9,7 +9,17 @@
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE TypeOperators       #-}
 
-module Data.Neural.HMatrix.Recurrent.Train where
+module Data.Neural.HMatrix.Recurrent.Train
+  ( traintSeries
+  , processSeries
+  -- * Internal
+  , trainStates
+  , bptt
+  , toNetworkU
+  , NetworkU(..)
+  , NetStates(..)
+  )
+  where
 
 import           Control.DeepSeq
 import           Data.Bifunctor

@@ -7,7 +7,12 @@
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
 
-module Data.Neural.HMatrix.Recurrent.Dropout where
+module Data.Neural.HMatrix.Recurrent.Dropout
+  ( trainSeriesDO
+  , trainSeriesDOMWC
+  , compensateDO
+  )
+  where
 
 import Control.Applicative
 import Control.Lens
@@ -127,6 +132,9 @@ genNetMaskMWC doRate g = go natsList
 
 -- TODO: LITERALLY WRONG!!!!
 -- see reference implementation for non-hmatrix version
+
+-- | Deprecated: literally wrong.
+--
 compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
 compensateDO d n =
     case n of
