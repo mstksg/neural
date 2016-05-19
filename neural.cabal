@@ -45,6 +45,8 @@ library
                      , linear
                      , mono-traversable
                      , mtl
+                     , mwc-random
+                     , primitive
                      , random
                      , reflection
                      , semigroups

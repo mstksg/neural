@@ -10,16 +10,18 @@
 module Data.Neural.HMatrix.Recurrent.Dropout where
 
 import Control.Applicative
-import Control.Monad.Random
+import Control.Lens
+import Control.Monad.Primitive
+import Control.Monad.Random hiding         (uniform)
 import Data.Bool
 import Data.Neural.HMatrix.Recurrent
 import Data.Neural.HMatrix.Recurrent.Train
-import Control.Lens
 import Data.Neural.Types                   (KnownNet, NeuralActs(..))
 import GHC.TypeLits
 import GHC.TypeLits.List
 import Numeric.AD.Rank1.Forward
 import Numeric.LinearAlgebra.Static
+import System.Random.MWC
 
 -- should store `diag m` instead of `m`?
 data NetMask :: Nat -> [Nat] -> Nat -> * where
@@ -49,6 +51,26 @@ trainSeriesDO na doRate step stepS targ inps0 n0 =
           (ns0, nu0)       = toNetworkU n0
       in  trainStates stepS (nu0 - nuShiftsM) ns0 dsM
 {-# INLINE trainSeriesDO #-}
+
+trainSeriesDOMWC
+    :: forall i hs o m. (KnownNet i hs o, PrimMonad m)
+    => NeuralActs (Forward Double)
+    -> Double
+    -> Double
+    -> Double
+    -> R o
+    -> [R i]
+    -> Network i hs o
+    -> Gen (PrimState m)
+    -> m (Network i hs o)
+trainSeriesDOMWC na doRate step stepS targ inps0 n0 g =
+    genNetMaskMWC doRate g <&> \nm ->
+      let n0M              = applyMask nm n0
+          (ns0M, nu0M)     = toNetworkU n0M
+          (dsM, nuShiftsM) = bptt na step targ inps0 ns0M nu0M
+          (ns0, nu0)       = toNetworkU n0
+      in  trainStates stepS (nu0 - nuShiftsM) ns0 dsM
+{-# INLINE trainSeriesDOMWC #-}
 
 applyMask
     :: KnownNet i hs o
@@ -87,7 +109,24 @@ genNetMask doRate = go natsList
              <$> getRandom
 {-# INLINE genNetMask #-}
 
+genNetMaskMWC
+    :: forall i hs o m. (KnownNet i hs o, PrimMonad m)
+    => Double
+    -> Gen (PrimState m)
+    -> m (NetMask i hs o)
+genNetMaskMWC doRate g = go natsList
+  where
+    go :: forall j js. KnownNat j => NatList js -> m (NetMask j js o)
+    go nl = case nl of
+              ØNL       -> return MaskOL
+              _ :<# nl' -> liftA2 MaskIL randomMask (go nl')
+    randomMask :: forall n. KnownNat n => m (R n)
+    randomMask = dvmap (bool 0 1 . (doRate <)) . flip randomVector Uniform
+             <$> uniform g
+{-# INLINE genNetMaskMWC #-}
+
 -- TODO: LITERALLY WRONG!!!!
+-- see reference implementation for non-hmatrix version
 compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
 compensateDO d n =
     case n of
