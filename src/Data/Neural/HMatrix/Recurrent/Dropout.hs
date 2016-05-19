@@ -41,11 +41,11 @@ deriving instance Show (NetMask i hs o)
 trainSeriesDO
     :: forall i hs o m. (KnownNet i hs o, MonadRandom m)
     => NeuralActs (Forward Double)
-    -> Double
-    -> Double
-    -> Double
-    -> R o
-    -> [R i]
+    -> Double   -- ^ Dropout rate
+    -> Double   -- ^ Step size (weights)
+    -> Double   -- ^ Step size (state)
+    -> R o      -- ^ Target
+    -> [R i]    -- ^ Inputs
     -> Network i hs o
     -> m (Network i hs o)
 trainSeriesDO na doRate step stepS targ inps0 n0 =
@@ -60,11 +60,11 @@ trainSeriesDO na doRate step stepS targ inps0 n0 =
 trainSeriesDOMWC
     :: forall i hs o m. (KnownNet i hs o, PrimMonad m)
     => NeuralActs (Forward Double)
-    -> Double
-    -> Double
-    -> Double
-    -> R o
-    -> [R i]
+    -> Double   -- ^ Dropout rate
+    -> Double   -- ^ Step size (weights)
+    -> Double   -- ^ Step size (state)
+    -> R o      -- ^ Target
+    -> [R i]    -- ^ Inputs
     -> Network i hs o
     -> Gen (PrimState m)
     -> m (Network i hs o)
@@ -130,16 +130,11 @@ genNetMaskMWC doRate g = go natsList
              <$> uniform g
 {-# INLINE genNetMaskMWC #-}
 
--- TODO: LITERALLY WRONG!!!!
--- see reference implementation for non-hmatrix version
-
--- | Deprecated: literally wrong.
---
 compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
 compensateDO d n =
     case n of
       NetOL _ -> n
       NetIL (RLayer b wI wS s) n' ->
-        NetIL (RLayer b wI (konst d * wS) s)
-        (zipNet (*) (*) (konstNet d) n')
+        NetIL (RLayer b wI (konst (1 - d) * wS) s)
+              (zipNet (*) (*) (konstNet (1 - d)) n')
 {-# INLINE compensateDO #-}
