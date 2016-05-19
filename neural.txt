@@ -445,8 +445,10 @@ data NetMask :: Nat -> [Nat] -> Nat -> *
 MaskOL :: NetMask i '[] o
 MaskIL :: !(R j) -> !(NetMask j js o) -> NetMask i (j : js) o
 trainSeriesDO :: (KnownNet i hs o, MonadRandom m) => NeuralActs (Forward Double) -> Double -> Double -> Double -> R o -> [R i] -> Network i hs o -> m (Network i hs o)
+trainSeriesDOMWC :: (KnownNet i hs o, PrimMonad m) => NeuralActs (Forward Double) -> Double -> Double -> Double -> R o -> [R i] -> Network i hs o -> Gen (PrimState m) -> m (Network i hs o)
 applyMask :: KnownNet i hs o => NetMask i hs o -> Network i hs o -> Network i hs o
 genNetMask :: (KnownNet i hs o, MonadRandom m) => Double -> m (NetMask i hs o)
+genNetMaskMWC :: (KnownNet i hs o, PrimMonad m) => Double -> Gen (PrimState m) -> m (NetMask i hs o)
 compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
 instance GHC.Show.Show (Data.Neural.HMatrix.Recurrent.Dropout.NetMask i hs o)
 
