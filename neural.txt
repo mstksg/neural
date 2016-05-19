@@ -8,6 +8,9 @@
 @package neural
 @version 0.1.0.0
 
+module Data.Neural.HMatrix.Recurrent.Process
+processSeries :: KnownNat n => Vector (a, b) -> Vector (V n a, b)
+
 module Data.Neural.HMatrix.Utility
 randomVec :: (MonadRandom m, KnownNat n) => (Double, Double) -> m (R n)
 randomMat :: (MonadRandom f, KnownNat n, KnownNat m) => (Double, Double) -> f (L n m)
