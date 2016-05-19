@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeOperators       #-}
 
 module Data.Neural.HMatrix.Recurrent.Train
-  ( traintSeries
+  ( trainSeries
   , processSeries
   -- * Internal
   , trainStates
