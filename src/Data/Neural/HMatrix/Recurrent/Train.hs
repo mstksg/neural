@@ -11,15 +11,20 @@
 
 module Data.Neural.HMatrix.Recurrent.Train where
 
-import Control.DeepSeq
-import Data.MonoTraversable
-import Data.Neural.HMatrix.Recurrent
-import Data.Neural.Types             (NeuralActs(..), KnownNet)
-import GHC.Generics                  (Generic)
-import GHC.TypeLits
-import GHC.TypeLits.List
-import Numeric.AD.Rank1.Forward
-import Numeric.LinearAlgebra.Static
+import           Control.DeepSeq
+import           Data.Bifunctor
+import           Data.List                     (foldl')
+import           Data.MonoTraversable
+import           Data.Neural.HMatrix.Recurrent
+import           Data.Neural.Types             (NeuralActs(..), KnownNet)
+import           Data.Proxy
+import           GHC.Generics                  (Generic)
+import           GHC.TypeLits
+import           GHC.TypeLits.List
+import           Numeric.AD.Rank1.Forward
+import           Numeric.LinearAlgebra.Static
+import qualified Data.Vector                   as V
+import qualified Linear.V                      as L
 
 data RLayerU :: Nat -> Nat -> * where
     RLayerU :: { rLayerUBiases   :: !(R o)
@@ -345,4 +350,17 @@ bptt (NA f g) step targ inps0 ns0 nu0 =
                       in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
                     _ -> error "impossible!"
                 _ -> error "impossible!"
+
+processSeries
+    :: forall a b n. KnownNat n
+    => V.Vector (a, b)
+    -> V.Vector (L.V n a, b)
+processSeries ios = fmap (bimap (L.V . V.take n) (V.! n) . V.unzip)
+                  . foldl' (V.zipWith V.snoc) (V.replicate k V.empty)
+                  . V.iterateN (n+1) (V.drop 1)
+                  $ ios
+  where
+    n = fromInteger $ natVal (Proxy :: Proxy n)
+    m = V.length ios
+    k = m - n + 1
 
