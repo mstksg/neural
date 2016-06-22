@@ -93,6 +93,10 @@ naRLRL :: (Num a, Ord a) => NeuralActs a
 naRLRL = naUniform relu
 {-# INLINE naRLRL #-}
 
+naRLLog :: (Floating a, Ord a) => NeuralActs a
+naRLLog = NA relu logistic
+{-# INLINE naRLLog #-}
+
 naSPId :: Floating a => NeuralActs a
 naSPId = naWithId softplus
 {-# INLINE naSPId #-}
