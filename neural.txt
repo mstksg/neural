@@ -42,6 +42,7 @@ naLogId :: Floating a => NeuralActs a
 naLogLog :: Floating a => NeuralActs a
 naRLId :: (Num a, Ord a) => NeuralActs a
 naRLRL :: (Num a, Ord a) => NeuralActs a
+naRLLog :: (Floating a, Ord a) => NeuralActs a
 naSPId :: Floating a => NeuralActs a
 naSPSP :: Floating a => NeuralActs a
 naUniform :: (a -> a) -> NeuralActs a
