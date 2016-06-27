@@ -22,7 +22,7 @@ import           Control.Monad.Random         as R
 import           Control.Monad.State
 import           Data.Foldable
 import           Data.MonoTraversable
-import           Data.Neural.HMatrix.Types
+import           Data.Neural.HMatrix.FLayer
 import           Data.Neural.HMatrix.Utility
 import           Data.Neural.Types            (KnownNet, NeuralActs(..))
 import           Data.Proxy

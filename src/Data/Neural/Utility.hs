@@ -9,19 +9,21 @@
 
 module Data.Neural.Utility where
 
-import Control.DeepSeq
+import           Control.DeepSeq
+import           Data.Bifunctor
+import           Data.Finite
+import           Data.Foldable
+import           Data.Maybe                   (fromJust)
+import           Data.Neural.Types
+import           Data.Proxy
+import           Data.Reflection
+import           GHC.TypeLits
+import           GHC.TypeLits.List
+import           Linear
+import           Linear.V
+import qualified Data.Vector                  as V
+import qualified Data.Vector.Generic          as VG
 import qualified Numeric.LinearAlgebra.Static as H
-import Data.Finite
-import Data.Maybe (fromJust)
-import Data.Neural.Types
-import Data.Proxy
-import Data.Reflection
-import GHC.TypeLits
-import GHC.TypeLits.List
-import qualified Data.Vector.Generic as VG
-import Linear
-import Linear.V
-import qualified Data.Vector as V
 
 unzipV :: V i (a, b) -> (V i a, V i b)
 unzipV (V v) = (V x, V y)
@@ -130,3 +132,17 @@ snocV (V v) x = V $ V.snoc v x
 deleteVec :: Int -> V.Vector a -> V.Vector a
 deleteVec i v = let (v0, v1) = V.splitAt i v
                 in  v0 V.++ V.tail v1
+
+processSeries
+    :: forall a b n. KnownNat n
+    => V.Vector (a, b)
+    -> V.Vector (V n a, b)
+processSeries ios = fmap (bimap (V . V.take n) (V.! n) . V.unzip)
+                  . foldl' (V.zipWith V.snoc) (V.replicate k V.empty)
+                  . V.iterateN (n+1) (V.drop 1)
+                  $ ios
+  where
+    n = fromInteger $ natVal (Proxy :: Proxy n)
+    m = V.length ios
+    k = m - n + 1
+

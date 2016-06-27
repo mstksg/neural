@@ -8,11 +8,11 @@ module Data.Neural.HMatrix.Utility
   where
 
 -- import           Control.Monad
+-- import           Data.Proxy
 -- import qualified Numeric.LinearAlgebra     as H
 import           Control.Lens                 ((<&>))
 import           Control.Monad.Primitive
 import           Control.Monad.Random         as R
-import           Data.Proxy
 import           GHC.TypeLits
 import           Numeric.LinearAlgebra.Static
 import qualified System.Random.MWC            as MWC

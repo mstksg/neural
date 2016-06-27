@@ -11,7 +11,7 @@ module Data.Neural.HMatrix.Recurrent.Generate
 import Control.Monad.Primitive
 import Control.Monad.Random
 import Data.Neural.HMatrix.Recurrent
-import Data.Neural.HMatrix.Types
+import Data.Neural.HMatrix.FLayer
 import Data.Neural.HMatrix.Utility
 import Data.Neural.Types             (KnownNet)
 import GHC.TypeLits

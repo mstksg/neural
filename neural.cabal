@@ -26,7 +26,7 @@ library
                        Data.Neural.HMatrix.Recurrent.Dropout
                        Data.Neural.HMatrix.Recurrent.Generate
                        Data.Neural.HMatrix.Recurrent.Train
-                       Data.Neural.HMatrix.Types
+                       Data.Neural.HMatrix.FLayer
                        Data.Neural.HMatrix.Utility
                        Data.Neural.Recurrent
                        Data.Neural.Recurrent.Dropout

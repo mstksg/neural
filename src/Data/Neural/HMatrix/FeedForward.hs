@@ -17,7 +17,7 @@ module Data.Neural.HMatrix.FeedForward where
 import Control.Monad.Primitive
 import Control.Monad.Random
 import Data.MonoTraversable
-import Data.Neural.HMatrix.Types
+import Data.Neural.HMatrix.FLayer
 import Data.Neural.Types            (NeuralActs(..))
 import Data.Singletons
 import Data.Singletons.Prelude

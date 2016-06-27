@@ -11,7 +11,6 @@
 
 module Data.Neural.HMatrix.Recurrent.Train
   ( trainSeries
-  , processSeries
   -- * Internal
   , trainStates
   , bptt
@@ -22,25 +21,20 @@ module Data.Neural.HMatrix.Recurrent.Train
   where
 
 import           Control.DeepSeq
-import           Data.Bifunctor
-import           Data.List                     (foldl')
 import           Data.MonoTraversable
+import           Data.Neural.HMatrix.FLayer
 import           Data.Neural.HMatrix.Recurrent
-import           Data.Neural.HMatrix.Types
 import           Data.Neural.Types             (NeuralActs(..), KnownNet)
-import           Data.Proxy
 import           GHC.Generics                  (Generic)
 import           GHC.TypeLits
 import           GHC.TypeLits.List
 import           Numeric.AD.Rank1.Forward
 import           Numeric.LinearAlgebra.Static
-import qualified Data.Vector                   as V
-import qualified Linear.V                      as L
 
 data RLayerU :: Nat -> Nat -> * where
-    RLayerU :: { rLayerUBiases   :: !(R o)
-               , rLayerUIWeights :: !(L o i)
-               , rLayerUSWeights :: !(L o o)
+    RLayerU :: { _rLayerUBiases   :: !(R o)
+               , _rLayerUIWeights :: !(L o i)
+               , _rLayerUSWeights :: !(L o o)
                } -> RLayerU i o
   deriving (Show, Generic)
 
@@ -224,7 +218,7 @@ trainSeries na step stepS targ inps0 n0 =
     (ds, nuShifts) = bptt na step targ inps0 ns0 nu0
 
 trainStates
-    :: forall i hs o. KnownNet i hs o
+    :: forall i hs o. ()
     => Double
     -> NetworkU i hs o
     -> NetStates i hs o
@@ -232,7 +226,7 @@ trainStates
     -> Network i hs o
 trainStates stepS = go
   where
-    go  :: forall j js. KnownNat j
+    go  :: forall j js. ()
         => NetworkU j js o
         -> NetStates j js o
         -> Deltas j js o
@@ -352,17 +346,4 @@ bptt (NA f g) step targ inps0 ns0 nu0 =
                           shiftsWS = outer dEdy s
                           shiftsB = dEdy -- should be dEdy * 1
                       in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
-
-processSeries
-    :: forall a b n. KnownNat n
-    => V.Vector (a, b)
-    -> V.Vector (L.V n a, b)
-processSeries ios = fmap (bimap (L.V . V.take n) (V.! n) . V.unzip)
-                  . foldl' (V.zipWith V.snoc) (V.replicate k V.empty)
-                  . V.iterateN (n+1) (V.drop 1)
-                  $ ios
-  where
-    n = fromInteger $ natVal (Proxy :: Proxy n)
-    m = V.length ios
-    k = m - n + 1
 

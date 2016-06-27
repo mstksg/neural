@@ -6,7 +6,7 @@
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE TypeFamilies        #-}
 
-module Data.Neural.HMatrix.Types where
+module Data.Neural.HMatrix.FLayer where
 
 import           Control.DeepSeq
 import           Control.Monad.Primitive

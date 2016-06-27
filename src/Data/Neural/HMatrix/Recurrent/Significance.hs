@@ -13,7 +13,7 @@ import Data.List.NonEmpty
 import Data.Neural.Activation
 import Data.Neural.HMatrix.Recurrent
 import Data.Neural.HMatrix.Recurrent.Train
-import Data.Neural.HMatrix.Types
+import Data.Neural.HMatrix.FLayer
 import Data.Neural.Types                   (KnownNet)
 import GHC.TypeLits
 import GHC.TypeLits.List

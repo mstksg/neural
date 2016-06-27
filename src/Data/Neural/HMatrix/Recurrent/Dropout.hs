@@ -21,7 +21,7 @@ import Control.Monad.Random hiding         (uniform)
 import Data.Bool
 import Data.Neural.HMatrix.Recurrent
 import Data.Neural.HMatrix.Recurrent.Train
-import Data.Neural.HMatrix.Types
+import Data.Neural.HMatrix.FLayer
 import Data.Neural.Types                   (KnownNet, NeuralActs(..))
 import GHC.TypeLits
 import GHC.TypeLits.List
