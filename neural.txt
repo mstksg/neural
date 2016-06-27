@@ -127,6 +127,7 @@ accumV :: (a -> b -> a) -> V n a -> [(Int, b)] -> V n a
 deleteV :: Finite n -> V n a -> V (n - 1) a
 snocV :: V n a -> a -> V (n + 1) a
 deleteVec :: Int -> Vector a -> Vector a
+processSeries :: forall a b n. KnownNat n => Vector (a, b) -> Vector (V n a, b)
 instance forall k (n :: k). Linear.V.Dim n => Data.Neural.Utility.Nudges (Linear.V.V n)
 instance Linear.V.Dim n => Data.Neural.Utility.Nudges (Data.Neural.Types.Node n)
 instance (Linear.V.Dim i, Linear.V.Dim o) => Data.Neural.Utility.Nudges (Data.Neural.Types.FLayer i o)
@@ -172,7 +173,7 @@ instance Control.DeepSeq.NFData a => Control.DeepSeq.NFData (Data.Neural.FeedFor
 instance Data.Binary.Class.Binary a => Data.Binary.Class.Binary (Data.Neural.FeedForward.SomeNet a)
 instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o, Data.Binary.Class.Binary a) => Data.Binary.Class.Binary (Data.Neural.FeedForward.OpaqueNet i o a)
 
-module Data.Neural.HMatrix.Types
+module Data.Neural.HMatrix.FLayer
 data FLayer :: Nat -> Nat -> *
 [FLayer] :: {fLayerBiases :: !(R o), fLayerWeights :: !(L o i)} -> FLayer i o
 data SomeFLayer :: *
@@ -183,16 +184,16 @@ fLayerFromHMat :: (KnownNat i, KnownNat o) => FLayer i o -> FLayer i o Double
 fLayerFromV :: (KnownNat i, KnownNat o) => FLayer i o Double -> FLayer i o
 randomFLayer :: forall m i o. (MonadRandom m, KnownNat i, KnownNat o) => (Double, Double) -> m (FLayer i o)
 randomFLayerMWC :: forall m i o. (PrimMonad m, KnownNat i, KnownNat o) => (Double, Double) -> Gen (PrimState m) -> m (FLayer i o)
-instance GHC.Generics.Generic (Data.Neural.HMatrix.Types.FLayer a b)
-instance (GHC.TypeLits.KnownNat a, GHC.TypeLits.KnownNat b) => GHC.Show.Show (Data.Neural.HMatrix.Types.FLayer a b)
-instance GHC.Show.Show Data.Neural.HMatrix.Types.SomeFLayer
-instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.MonoTraversable.MonoFunctor (Data.Neural.HMatrix.Types.FLayer i o)
-instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => GHC.Num.Num (Data.Neural.HMatrix.Types.FLayer i o)
-instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => GHC.Real.Fractional (Data.Neural.HMatrix.Types.FLayer i o)
-instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => System.Random.Random (Data.Neural.HMatrix.Types.FLayer i o)
-instance Control.DeepSeq.NFData (Data.Neural.HMatrix.Types.FLayer i o)
-instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class.Binary (Data.Neural.HMatrix.Types.FLayer i o)
-instance Data.Binary.Class.Binary Data.Neural.HMatrix.Types.SomeFLayer
+instance GHC.Generics.Generic (Data.Neural.HMatrix.FLayer.FLayer a b)
+instance (GHC.TypeLits.KnownNat a, GHC.TypeLits.KnownNat b) => GHC.Show.Show (Data.Neural.HMatrix.FLayer.FLayer a b)
+instance GHC.Show.Show Data.Neural.HMatrix.FLayer.SomeFLayer
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.MonoTraversable.MonoFunctor (Data.Neural.HMatrix.FLayer.FLayer i o)
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => GHC.Num.Num (Data.Neural.HMatrix.FLayer.FLayer i o)
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => GHC.Real.Fractional (Data.Neural.HMatrix.FLayer.FLayer i o)
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => System.Random.Random (Data.Neural.HMatrix.FLayer.FLayer i o)
+instance Control.DeepSeq.NFData (Data.Neural.HMatrix.FLayer.FLayer i o)
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class.Binary (Data.Neural.HMatrix.FLayer.FLayer i o)
+instance Data.Binary.Class.Binary Data.Neural.HMatrix.FLayer.SomeFLayer
 
 module Data.Neural.HMatrix.FeedForward
 type KnownNet i hs o = (KnownNat i, SingI hs, KnownNat o)
@@ -370,8 +371,7 @@ instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class
 
 module Data.Neural.HMatrix.Recurrent.Train
 trainSeries :: forall i hs o. KnownNet i hs o => NeuralActs (Forward Double) -> Double -> Double -> R o -> [R i] -> Network i hs o -> Network i hs o
-processSeries :: forall a b n. KnownNat n => Vector (a, b) -> Vector (V n a, b)
-trainStates :: forall i hs o. KnownNet i hs o => Double -> NetworkU i hs o -> NetStates i hs o -> Deltas i hs o -> Network i hs o
+trainStates :: forall i hs o. Double -> NetworkU i hs o -> NetStates i hs o -> Deltas i hs o -> Network i hs o
 bptt :: forall i hs o. KnownNet i hs o => NeuralActs (Forward Double) -> Double -> R o -> [R i] -> NetStates i hs o -> NetworkU i hs o -> (Deltas i hs o, NetworkU i hs o)
 toNetworkU :: Network i hs o -> (NetStates i hs o, NetworkU i hs o)
 data NetworkU :: Nat -> [Nat] -> Nat -> *
