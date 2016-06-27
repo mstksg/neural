@@ -20,11 +20,13 @@ library
                        -- Data.Neural.Recurrent.Significance
                        Data.Neural.Activation
                        Data.Neural.FeedForward
+                       Data.Neural.HMatrix.FeedForward
                        Data.Neural.HMatrix.Recurrent
                        Data.Neural.HMatrix.Recurrent.Dropout
                        Data.Neural.HMatrix.Recurrent.Generate
                        Data.Neural.HMatrix.Recurrent.Significance
                        Data.Neural.HMatrix.Recurrent.Train
+                       Data.Neural.HMatrix.Types
                        Data.Neural.HMatrix.Utility
                        Data.Neural.Recurrent
                        Data.Neural.Recurrent.Dropout

@@ -26,6 +26,7 @@ import           Data.Bifunctor
 import           Data.List                     (foldl')
 import           Data.MonoTraversable
 import           Data.Neural.HMatrix.Recurrent
+import           Data.Neural.HMatrix.Types
 import           Data.Neural.Types             (NeuralActs(..), KnownNet)
 import           Data.Proxy
 import           GHC.Generics                  (Generic)
