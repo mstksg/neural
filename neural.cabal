@@ -17,6 +17,7 @@ cabal-version:       >=1.10
 
 library
   exposed-modules:     Data.Neural.Types
+                       -- Data.Neural.HMatrix.Recurrent.Significance
                        -- Data.Neural.Recurrent.Significance
                        Data.Neural.Activation
                        Data.Neural.FeedForward
@@ -24,7 +25,6 @@ library
                        Data.Neural.HMatrix.Recurrent
                        Data.Neural.HMatrix.Recurrent.Dropout
                        Data.Neural.HMatrix.Recurrent.Generate
-                       Data.Neural.HMatrix.Recurrent.Significance
                        Data.Neural.HMatrix.Recurrent.Train
                        Data.Neural.HMatrix.Types
                        Data.Neural.HMatrix.Utility
@@ -42,6 +42,7 @@ library
                      , constraints
                      , deepseq
                      , finite-typelits
+                     , singletons
                      , hmatrix >= 0.18
                      , lens
                      , linear

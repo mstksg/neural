@@ -88,13 +88,11 @@ deleteNode ix fn nt =
                                          $ rLayerNodes l' )
                                        (rLayerState l')
                       in  OpaqueNet $ lD `NetIL` l'D `NetIL` nt''
-          _ -> error "impossible!"
       IS ix' ->
         case nt of
           NetIL l nt' ->
             case deleteNode ix' fn nt' of
               OpaqueNet ntD -> OpaqueNet $ l `NetIL` ntD
-          _ -> error "impossible!"
 
 addNode :: forall i hs o a. KnownNet i hs o
         => (forall j l. (KnownNat j, KnownNat l, KnownNat (l + 1)) => (RNode j (l + 1) a, V l a, a))

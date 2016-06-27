@@ -56,7 +56,6 @@ instance (KnownNet i hs o) => Applicative (NetworkU i hs o) where
     {-# INLINE pure #-}
     NetUOL f     <*> NetUOL x     = NetUOL (f <*> x)
     NetUIL fi fr <*> NetUIL xi xr = NetUIL (fi <*> xi) (fr <*> xr)
-    _            <*> _            = error "this should never happen"
     {-# INLINE (<*>) #-}
 
 instance Applicative (NetworkU i hs o) => Additive (NetworkU i hs o) where
@@ -131,7 +130,6 @@ runNetworkU (NA f g) = go
                         let v' = fmap f (l !* RNode 1 v s)
                             (o, nso) = go n' v' ns'
                         in  (o, NetSIL v' nso)
-                      _ -> error "impossible.  n and ns should be same constructors."
 {-# INLINE runNetworkU #-}
 
 tNetULayers :: forall i hs o o' a b f. (Applicative f)
@@ -228,7 +226,6 @@ trainSeries (NA f g) step stepS y inps0 n0 =
                       deltawsI = delta *! (rNodeIWeights <$> ln)
                       deltawsS = delta *! (rNodeSWeights <$> ln)
                   in  (DeltasIL deltawsI deltawsS deltaos, RLayerU shft `NetUIL` n'')
-                _ -> error "impossible.  nu and ns should be same constructors."
     {-# INLINE trainFinal #-}
     trainSample :: V i a
                 -> NetStates i hs o a
@@ -269,10 +266,8 @@ trainSeries (NA f g) step stepS y inps0 n0 =
                           deltawsI = delta *! (rNodeIWeights <$> ln)
                           deltawsS = delta *! (rNodeSWeights <$> ln)
                       in  (DeltasIL deltawsI deltawsS deltaos, RLayerU shft `NetUIL` n'')
-                    _ -> error "impossible.  nu and ds should be same constructors."
-                _ -> error "impossible.  nu and ns should be same constructors."
     {-# INLINE trainSample #-}
-    trainStates :: forall j hs'. KnownNat j
+    trainStates :: forall j hs'. ()
                 => NetworkU j hs' o a
                 -> NetStates j hs' o a
                 -> Deltas j hs' o a
@@ -287,16 +282,14 @@ trainSeries (NA f g) step stepS y inps0 n0 =
                 DeltasIL _ (delS :: V k a) ds' ->
                   let s' = liftA2 (\d s0 -> s0 - d * stepS) delS s
                   in  RLayer ln s' `NetIL` trainStates nu' ns' ds'
-                _ -> error "impossible.  nu and ds should be same constructors."
-            _ -> error "impossible.  nu and ns should be same constructors."
     {-# INLINE trainStates #-}
-    adjustOutput :: KnownNat j => Node j a -> a -> a -> (a, Node j a)
+    adjustOutput :: Node j a -> a -> a -> (a, Node j a)
     adjustOutput xb y' d = (delta, weightShifts delta xb)
       where
         delta = let (o, o') = diff' g d
                 in  (o - y') * o'
     {-# INLINE adjustOutput #-}
-    adjustHidden :: KnownNat k => RNode j k a -> a -> a -> (a, RNode j k a)
+    adjustHidden :: RNode j k a -> a -> a -> (a, RNode j k a)
     adjustHidden xb deltao d = (delta, weightShifts delta xb)
       where
         -- instead of (o - target), use deltao, weighted average of errors
@@ -345,7 +338,7 @@ adjustNetwork na nudge accept e0 ios = do
           else return err2
 {-# INLINE adjustNetwork #-}
 
-adjustNetworkGD :: forall i hs o a. (Applicative (Network i hs o), Floating a, KnownNat i, KnownNat o, Show a)
+adjustNetworkGD :: forall i hs o a. (Applicative (Network i hs o), Floating a, KnownNat i, KnownNat o)
                 => NeuralActs a
                 -> a
                 -> a
@@ -384,7 +377,7 @@ trainSeriesSI na nudge accept0 accept1 ios n = evalStateT (mapM_ f [0..n]) Nothi
     {-# INLINE f #-}
 {-# INLINE trainSeries #-}
 
-trainSeriesGD :: forall i hs o a. (Floating a, KnownNet i hs o, Random a, Show a, NFData a)
+trainSeriesGD :: forall i hs o a. (Floating a, KnownNet i hs o, NFData a)
             => NeuralActs a
             -> a
             -> a

@@ -100,13 +100,10 @@ zipNetU ff fr = go
                  NetUOL l1 ->
                    case n2 of
                      NetUOL l2 -> NetUOL (ff l1 l2)
-                     _         -> error "impossible"
                  NetUIL l1 n1' ->
                    case n2 of
                      NetUIL l2 n2' ->
                        NetUIL (fr l1 l2) (go n1' n2')
-                     _             ->
-                       error "impossible"
 
 mapNetU
     :: forall i hs o. KnownNet i hs o
@@ -198,7 +195,6 @@ runNetworkU (NA f g) = go
                         let v' = dvmap f $ b + wI #> v + wS #> s
                             (o, nso) = go n' v' ns'
                         in  (o, NetSIL v' nso)
-                      _ -> error "impossible.  n and ns should be same constructors."
 {-# INLINE runNetworkU #-}
 
 toNetworkU :: Network i hs o -> (NetStates i hs o, NetworkU i hs o)
@@ -251,8 +247,6 @@ trainStates stepS = go
                 DeltasIL _ (delS :: R k) ds' ->
                   let s' = s - konst stepS * delS
                   in  RLayer b wI wS s' `NetIL` go nu' ns' ds'
-                _ -> error "impossible.  nu and ds should be same constructors."
-            _ -> error "impossible.  nu and ns should be same constructors."
 
 bptt
     :: forall i hs o. KnownNet i hs o
@@ -323,7 +317,6 @@ bptt (NA f g) step targ inps0 ns0 nu0 =
                       shiftsWS = outer dEdy s
                       shiftsB = dEdy -- should be dEdy * 1
                   in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
-                _ -> error "impossible."
     trainSample
         :: R i
         -> NetStates i hs o
@@ -359,8 +352,6 @@ bptt (NA f g) step targ inps0 ns0 nu0 =
                           shiftsWS = outer dEdy s
                           shiftsB = dEdy -- should be dEdy * 1
                       in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
-                    _ -> error "impossible!"
-                _ -> error "impossible!"
 
 processSeries
     :: forall a b n. KnownNat n

@@ -101,7 +101,7 @@ instance Applicative (V i) => Applicative (Node i) where
     Node fb fw <*> Node xb xw = Node (fb xb) (fw <*> xw)
     {-# INLINE (<*>) #-}
 
-instance (KnownNat i, Additive (V i)) => Additive (Node i) where
+instance Additive (V i) => Additive (Node i) where
     zero = Node 0 zero
     {-# INLINE zero #-}
     Node b1 w1 ^+^ Node b2 w2 = Node (b1 + b2) (w1 ^+^ w2)
@@ -115,7 +115,7 @@ instance (KnownNat i, Additive (V i)) => Additive (Node i) where
     liftI2 f (Node b1 w1) (Node b2 w2) = Node (f b1 b2) (liftI2 f w1 w2)
     {-# INLINE liftI2 #-}
 
-instance (KnownNat i, Metric (V i)) => Metric (Node i) where
+instance Metric (V i) => Metric (Node i) where
     Node b1 w1 `dot` Node b2 w2 = b1 * b2 + w1 `dot` w2
     {-# INLINE dot #-}
     quadrance (Node b w) = b * b + quadrance w

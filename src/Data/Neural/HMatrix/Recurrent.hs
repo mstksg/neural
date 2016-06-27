@@ -16,6 +16,7 @@
 
 module Data.Neural.HMatrix.Recurrent where
 
+-- import qualified Data.Neural.Types         as N
 import           Control.DeepSeq
 import           Control.Monad.Random         as R
 import           Control.Monad.State
@@ -32,7 +33,6 @@ import           GHC.TypeLits.List
 import           Numeric.LinearAlgebra.Static
 import qualified Data.Binary                  as B
 import qualified Data.Neural.Recurrent        as N
-import qualified Data.Neural.Types            as N
 import qualified Data.Vector                  as V
 import qualified Data.Vector.Generic          as VG
 import qualified Linear.V                     as L
@@ -137,13 +137,10 @@ zipNet ff fr = go
                  NetOL l1 ->
                    case n2 of
                      NetOL l2 -> NetOL (ff l1 l2)
-                     _        -> error "impossible"
                  NetIL l1 n1' ->
                    case n2 of
                      NetIL l2 n2' ->
                        NetIL (fr l1 l2) (go n1' n2')
-                     _             ->
-                       error "impossible"
 
 instance (KnownNat i, KnownNats hs, KnownNat o) => Num (Network i hs o) where
     (+)         = zipNet (+) (+)
@@ -161,7 +158,7 @@ instance (KnownNat i, KnownNats hs, KnownNat o) => Fractional (Network i hs o) w
 
 type instance Element (Network i hs o) = Double
 
-instance (KnownNat i, KnownNats hs, KnownNat o) => MonoFunctor (Network i hs o) where
+instance (KnownNat i, KnownNat o) => MonoFunctor (Network i hs o) where
     omap f = \case NetOL l   -> NetOL (omap f l)
                    NetIL l n -> NetIL (omap f l) (omap f n)
 

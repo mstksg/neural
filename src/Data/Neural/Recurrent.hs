@@ -79,7 +79,7 @@ instance (Applicative (V i), Applicative (V s)) => Applicative (RNode i s) where
     RNode fb fi fs <*> RNode xb xi xs = RNode (fb xb) (fi <*> xi) (fs <*> xs)
     {-# INLINE (<*>) #-}
 
-instance (KnownNat i, Additive (V i), Additive (V s)) => Additive (RNode i s) where
+instance (Additive (V i), Additive (V s)) => Additive (RNode i s) where
     zero = RNode 0 zero zero
     {-# INLINE zero #-}
     RNode b1 i1 s1 ^+^ RNode b2 i2 s2 = RNode (b1 + b2) (i1 ^+^ i2) (s1 ^+^ s2)
@@ -147,7 +147,7 @@ netActsOut n = case n of
                  NetAOL l    -> l
 
 
-runNetwork :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
+runNetwork :: forall i hs o a. (Num a, KnownNat i)
            => NeuralActs a
            -> Network i hs o a
            -> V i a
@@ -165,7 +165,7 @@ runNetwork (NA f g) = go
                              in  (v'', NetIL l' nI')
 {-# INLINE runNetwork #-}
 
-runNetworkS :: (Num a, KnownNat i, KnownNat o, MonadState (Network i hs o a) m)
+runNetworkS :: (Num a, KnownNat i, MonadState (Network i hs o a) m)
             => NeuralActs a
             -> V i a
             -> m (V o a)
@@ -198,7 +198,7 @@ runNetworkActsS :: forall i hs o m a. (KnownNat i, Num a, MonadState (Network i 
 runNetworkActsS na v = state (\n -> runNetworkActs na n v)
 {-# INLINE runNetworkActsS #-}
 
-runNetStream :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
+runNetStream :: forall i hs o a. (Num a, KnownNat i)
              => NeuralActs a
              -> Network i hs o a
              -> [V i a]
@@ -207,7 +207,7 @@ runNetStream na n vs = runState (mapM (runNetworkS na) vs) n
 {-# INLINE runNetStream #-}
 
 runNetStream_
-    :: forall i hs o a. (Num a, KnownNat i, KnownNat o, NFData a)
+    :: forall i hs o a. (Num a, KnownNat i, NFData a)
     => NeuralActs a
     -> Network i hs o a
     -> [V i a]
@@ -221,7 +221,7 @@ runNetStream_ na = go
 {-# INLINE runNetStream_ #-}
 
 prerunNetStream
-    :: forall i hs o a. (Num a, KnownNat i, KnownNat o, NFData a)
+    :: forall i hs o a. (Num a, KnownNat i, NFData a)
     => NeuralActs a
     -> Network i hs o a
     -> [V i a]
@@ -257,7 +257,7 @@ runNetStreamActs_ na = go
 
 
 
-runNetFeedback :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
+runNetFeedback :: forall i hs o a. (Num a, KnownNat i)
                => NeuralActs a
                -> (V o a -> V i a)
                -> Network i hs o a
@@ -270,7 +270,7 @@ runNetFeedback na nxt = go
              in  res : go n' (nxt v')
 {-# INLINE runNetFeedback #-}
 
-runNetFeedback_ :: forall i hs o a. (Num a, KnownNat i, KnownNat o)
+runNetFeedback_ :: forall i hs o a. (Num a, KnownNat i)
                 => NeuralActs a
                 -> (V o a -> V i a)
                 -> Network i hs o a
@@ -283,7 +283,7 @@ runNetFeedback_ na nxt = go
              in  v' : go n' (nxt v')
 {-# INLINE runNetFeedback_ #-}
 
-runNetFeedbackM_ :: forall i hs o a m. (Num a, KnownNat i, Monad m, KnownNat o)
+runNetFeedbackM_ :: forall i hs o a m. (Num a, KnownNat i, Monad m)
                  => NeuralActs a
                  -> (V o a -> m (V i a))
                  -> Network i hs o a
@@ -300,7 +300,7 @@ runNetFeedbackM_ na nxt = go
                  return $ v' : vs
 
 runNetActsFeedbackM_
-    :: forall i hs o m a. (Num a, KnownNat i, Monad m, KnownNat o)
+    :: forall i hs o m a. (Num a, KnownNat i, Monad m)
     => NeuralActs a
     -> (V o a -> m (V i a))
     -> Network i hs o a
@@ -437,7 +437,6 @@ instance (KnownNet i hs o) => Applicative (Network i hs o) where
     {-# INLINE pure #-}
     NetOL f     <*> NetOL x     = NetOL (f <*> x)
     NetIL fi fr <*> NetIL xi xr = NetIL (fi <*> xi) (fr <*> xr)
-    _           <*> _           = error "this should never happen"
     {-# INLINE (<*>) #-}
 
 instance Applicative (Network i hs o) => Additive (Network i hs o) where
@@ -464,7 +463,6 @@ instance (KnownNet i hs o, Random a) => Random (Network i hs o a) where
         (NetOL rmn, NetOL rmx)         -> NetOL <$> state (randomR (rmn, rmx))
         (NetIL lmn nmn, NetIL lmx nmx) -> NetIL <$> state (randomR (lmn, lmx))
                                                 <*> state (randomR (nmn, nmx))
-        (_, _)                         -> error "impossible!"
 
 instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, B.Binary a) => B.Binary (Network i hs o a) where
     put (NetOL l)    = B.put l

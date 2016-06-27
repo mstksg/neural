@@ -97,7 +97,6 @@ applyMask nm nn =
                                NetIL (RLayer b' (wI' <> mM) wS' s') nnM'
             in  NetIL (RLayer (m * b) (mM <> wI) (mM <> wS <> mM) (m * s))
                       nnMasked
-          _ -> error "impossible!"
 {-# INLINE applyMask #-}
 
 genNetMask
@@ -106,7 +105,7 @@ genNetMask
     -> m (NetMask i hs o)
 genNetMask doRate = go natsList
   where
-    go :: forall j js. KnownNat j => NatList js -> m (NetMask j js o)
+    go :: forall j js. NatList js -> m (NetMask j js o)
     go nl = case nl of
               ØNL       -> return MaskOL
               _ :<# nl' -> liftA2 MaskIL randomMask (go nl')
@@ -122,7 +121,7 @@ genNetMaskMWC
     -> m (NetMask i hs o)
 genNetMaskMWC doRate g = go natsList
   where
-    go :: forall j js. KnownNat j => NatList js -> m (NetMask j js o)
+    go :: forall j js. NatList js -> m (NetMask j js o)
     go nl = case nl of
               ØNL       -> return MaskOL
               _ :<# nl' -> liftA2 MaskIL randomMask (go nl')

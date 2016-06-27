@@ -1,7 +1,7 @@
 # For more information, see: https://github.com/commercialhaskell/stack/blob/release/doc/yaml_configuration.md
 
 # Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
-resolver: nightly-2016-05-18
+resolver: nightly-2016-06-26
 
 # Local packages, usually specified by relative directory name
 packages:
@@ -11,11 +11,12 @@ packages:
       commit: 42a88fbcb6bd1d2c4dc18fae5e962bd34fb316a1
     subdirs:
       - packages/base
+    extra-dep: true
 
 # Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
   - finite-typelits-0.1.0.0
-  - type-combinators-0.2.2.1
+  - type-combinators-0.2.4.3
 
 # Override default flag values for local packages and extra-deps
 flags: {}

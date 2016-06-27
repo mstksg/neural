@@ -230,7 +230,7 @@ instance (KnownNat i, KnownNat o) => Applicative (Network i '[] o) where
     NetOL f <*> NetOL x = NetOL (f <*> x)
     {-# INLINE (<*>) #-}
 
-instance (KnownNat i, KnownNat o, KnownNat j, Applicative (Network j hs o)) => Applicative (Network i (j ': hs) o) where
+instance (KnownNat i, KnownNat j, Applicative (Network j hs o)) => Applicative (Network i (j ': hs) o) where
     pure x = pure x `NetIL` pure x
     {-# INLINE pure #-}
     NetIL fi fr <*> NetIL xi xr = NetIL (fi <*> xi) (fr <*> xr)
@@ -240,7 +240,7 @@ instance (KnownNat i, KnownNat o, Random a) => Random (Network i '[] o a) where
     random = first NetOL . random
     randomR (NetOL rmn, NetOL rmx) = first NetOL . randomR (rmn, rmx)
 
-instance (KnownNat i, KnownNat o, KnownNat j, Random a, Random (Network j hs o a)) => Random (Network i (j ': hs) o a) where
+instance (KnownNat i, KnownNat j, Random a, Random (Network j hs o a)) => Random (Network i (j ': hs) o a) where
     random g = let (l, g') = random g
                in  first (l `NetIL`) (random g')
     randomR (NetIL lmn nmn, NetIL lmx nmx) g =
@@ -252,7 +252,7 @@ instance (KnownNat i, KnownNat o, B.Binary a) => B.Binary (Network i '[] o a) wh
     get = NetOL <$> B.get
 
 -- instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
-instance (KnownNat i, KnownNat o, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
+instance (KnownNat i, KnownNat j, B.Binary a, B.Binary (Network j hs o a)) => B.Binary (Network i (j ': hs) o a) where
     put (NetIL l n') = B.put l *> B.put n'
     get = NetIL <$> B.get <*> B.get
 
