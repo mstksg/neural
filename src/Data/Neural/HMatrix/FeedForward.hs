@@ -1,6 +1,6 @@
+{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
-{-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE PolyKinds           #-}
@@ -9,11 +9,13 @@
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module Data.Neural.HMatrix.FeedForward where
 
 -- import GHC.TypeLits
 -- import GHC.TypeLits.List
+import Control.DeepSeq
 import Control.Monad.Primitive
 import Control.Monad.Random
 import Data.MonoTraversable
@@ -46,6 +48,10 @@ data OpaqueNet :: Nat -> Nat -> * where
 -- deriving instance (KnownNat i, KnownNat o) => Show (OpaqueNet i o)
 
 type instance Element (Network i hs o) = Double
+
+instance NFData (Network i hs o) where
+    rnf (NetOL (force -> !_)) = ()
+    rnf (NetIL (force -> !_) (force -> !_)) = ()
 
 pureNet
     :: forall i hs o. KnownNet i hs o
