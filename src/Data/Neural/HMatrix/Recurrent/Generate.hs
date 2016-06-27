@@ -18,21 +18,6 @@ import GHC.TypeLits
 import GHC.TypeLits.List
 import System.Random.MWC
 
-randomFLayer
-    :: forall m i o. (MonadRandom m, KnownNat i, KnownNat o)
-    => (Double, Double)
-    -> m (FLayer i o)
-randomFLayer r = FLayer <$> randomVec r
-                        <*> randomMat r
-
-randomFLayerMWC
-    :: forall m i o. (PrimMonad m, KnownNat i, KnownNat o)
-    => (Double, Double)
-    -> Gen (PrimState m)
-    -> m (FLayer i o)
-randomFLayerMWC r g = FLayer <$> randomVecMWC r g
-                             <*> randomMatMWC r g
-
 
 randomRLayer
     :: forall m i o. (MonadRandom m, KnownNat i, KnownNat o)

@@ -9,6 +9,7 @@
 module Data.Neural.HMatrix.Types where
 
 import           Control.DeepSeq
+import           Control.Monad.Primitive
 import           Control.Monad.Random         as R
 import           Data.Foldable
 import           Data.MonoTraversable
@@ -18,6 +19,7 @@ import           Data.Reflection
 import           GHC.Generics                 (Generic)
 import           GHC.TypeLits
 import           Numeric.LinearAlgebra.Static
+import           System.Random.MWC hiding     (create)
 import qualified Data.Binary                  as B
 import qualified Data.Neural.Types            as N
 import qualified Data.Vector                  as V
@@ -101,4 +103,19 @@ fLayerFromV (N.FLayer n) = FLayer b w
   where
     Just b = create . VG.convert . L.toVector $ N.nodeBias <$> n
     Just w = create . H.fromRows . toList $ VG.convert . L.toVector . N.nodeWeights <$> n
+
+randomFLayer
+    :: forall m i o. (MonadRandom m, KnownNat i, KnownNat o)
+    => (Double, Double)
+    -> m (FLayer i o)
+randomFLayer r = FLayer <$> randomVec r
+                        <*> randomMat r
+
+randomFLayerMWC
+    :: forall m i o. (PrimMonad m, KnownNat i, KnownNat o)
+    => (Double, Double)
+    -> Gen (PrimState m)
+    -> m (FLayer i o)
+randomFLayerMWC r g = FLayer <$> randomVecMWC r g
+                             <*> randomMatMWC r g
 

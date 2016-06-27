@@ -14,14 +14,17 @@ module Data.Neural.HMatrix.FeedForward where
 
 -- import GHC.TypeLits
 -- import GHC.TypeLits.List
-import Numeric.AD.Rank1.Forward
+import Control.Monad.Primitive
+import Control.Monad.Random
 import Data.MonoTraversable
 import Data.Neural.HMatrix.Types
-import Data.Neural.Types                  (NeuralActs(..))
+import Data.Neural.Types            (NeuralActs(..))
 import Data.Singletons
 import Data.Singletons.Prelude
 import Data.Singletons.TypeLits
+import Numeric.AD.Rank1.Forward
 import Numeric.LinearAlgebra.Static
+import System.Random.MWC
 
 type KnownNet i hs o = (KnownNat i, SingI hs, KnownNat o)
 
@@ -108,4 +111,31 @@ trainSample (NA f g) rate x0 target = fst . go x0
               w'   = FLayer wB' wN'
               dWs  = tr wN #> dEdy
           in  (NetIL w' n', dWs)
+
+randomNet
+    :: forall m i hs o. (MonadRandom m, KnownNet i hs o)
+    => (Double, Double)
+    -> m (Network i hs o)
+randomNet r = go sing
+  where
+    go :: forall j js. KnownNat j
+       => Sing js
+       -> m (Network j js o)
+    go nl = case nl of
+              SNil             -> NetOL <$> randomFLayer r
+              SNat `SCons` nl' -> NetIL <$> randomFLayer r <*> go nl'
+
+randomNetMWC
+    :: forall m i hs o. (PrimMonad m, KnownNet i hs o)
+    => (Double, Double)
+    -> Gen (PrimState m)
+    -> m (Network i hs o)
+randomNetMWC r g = go sing
+  where
+    go :: forall j js. KnownNat j
+       => Sing js
+       -> m (Network j js o)
+    go nl = case nl of
+              SNil             -> NetOL <$> randomFLayerMWC r g
+              SNat `SCons` nl' -> NetIL <$> randomFLayerMWC r g <*> go nl'
 
