@@ -1,0 +1,369 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE DataKinds           #-}</span><span>
+</span><a name="line-2"></a><span class="hs-pragma">{-# LANGUAGE DeriveGeneric       #-}</span><span>
+</span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE TypeFamilies        #-}</span><span>
+</span><a name="line-4"></a><span class="hs-pragma">{-# LANGUAGE RankNTypes          #-}</span><span>
+</span><a name="line-5"></a><span class="hs-pragma">{-# LANGUAGE BangPatterns        #-}</span><span>
+</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE ViewPatterns        #-}</span><span>
+</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><a name="line-8"></a><span class="hs-pragma">{-# LANGUAGE GADTs               #-}</span><span>
+</span><a name="line-9"></a><span class="hs-pragma">{-# LANGUAGE KindSignatures      #-}</span><span>
+</span><a name="line-10"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators       #-}</span><span>
+</span><a name="line-11"></a><span>
+</span><a name="line-12"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">Recurrent</span><span class="hs-operator">.</span><span class="hs-identifier">Train</span><span>
+</span><a name="line-13"></a><span>  </span><span class="hs-special">(</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#trainSeries"><span class="hs-identifier hs-var">trainSeries</span></a><span>
+</span><a name="line-14"></a><span>  </span><span class="hs-special">,</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#processSeries"><span class="hs-identifier hs-var">processSeries</span></a><span>
+</span><a name="line-15"></a><span>  </span><span class="hs-comment">-- * Internal</span><span>
+</span><a name="line-16"></a><span>  </span><span class="hs-special">,</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#trainStates"><span class="hs-identifier hs-var">trainStates</span></a><span>
+</span><a name="line-17"></a><span>  </span><span class="hs-special">,</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#bptt"><span class="hs-identifier hs-var">bptt</span></a><span>
+</span><a name="line-18"></a><span>  </span><span class="hs-special">,</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#toNetworkU"><span class="hs-identifier hs-var">toNetworkU</span></a><span>
+</span><a name="line-19"></a><span>  </span><span class="hs-special">,</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#NetworkU"><span class="hs-identifier hs-type">NetworkU</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span>
+</span><a name="line-20"></a><span>  </span><span class="hs-special">,</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#NetStates"><span class="hs-identifier hs-type">NetStates</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span>
+</span><a name="line-21"></a><span>  </span><span class="hs-special">)</span><span>
+</span><a name="line-22"></a><span>  </span><span class="hs-keyword">where</span><span>
+</span><a name="line-23"></a><span>
+</span><a name="line-24"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">DeepSeq</span><span>
+</span><a name="line-25"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Bifunctor</span><span>
+</span><a name="line-26"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">List</span><span>                     </span><span class="hs-special">(</span><span class="hs-identifier hs-var">foldl'</span><span class="hs-special">)</span><span>
+</span><a name="line-27"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">MonoTraversable</span><span>
+</span><a name="line-28"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.Recurrent.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">Recurrent</span></a><span>
+</span><a name="line-29"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>
+</span><a name="line-30"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>             </span><span class="hs-special">(</span><a href="Data.Neural.Activation.html#NeuralActs"><span class="hs-identifier hs-type">NeuralActs</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">,</span><span> </span><a href="Data.Neural.Types.html#KnownNet"><span class="hs-identifier hs-type">KnownNet</span></a><span class="hs-special">)</span><span>
+</span><a name="line-31"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Proxy</span><span>
+</span><a name="line-32"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">GHC</span><span class="hs-operator">.</span><span class="hs-identifier">Generics</span><span>                  </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Generic</span><span class="hs-special">)</span><span>
+</span><a name="line-33"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">GHC</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
+</span><a name="line-34"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">GHC</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span class="hs-operator">.</span><span class="hs-identifier">List</span><span>
+</span><a name="line-35"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">AD</span><span class="hs-operator">.</span><span class="hs-identifier">Rank1</span><span class="hs-operator">.</span><span class="hs-identifier">Forward</span><span>
+</span><a name="line-36"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">LinearAlgebra</span><span class="hs-operator">.</span><span class="hs-identifier">Static</span><span>
+</span><a name="line-37"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Vector</span><span>                   </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">V</span><span>
+</span><a name="line-38"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Linear</span><span class="hs-operator">.</span><span class="hs-identifier">V</span><span>                      </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">L</span><span>
+</span><a name="line-39"></a><span>
+</span><a name="line-40"></a><span class="hs-keyword">data</span><span> </span><a name="RLayerU"><a href="Data.Neural.HMatrix.Recurrent.Train.html#RLayerU"><span class="hs-identifier">RLayerU</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-41"></a><span>    </span><a name="RLayerU"><a href="Data.Neural.HMatrix.Recurrent.Train.html#RLayerU"><span class="hs-identifier">RLayerU</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">{</span><span> </span><a name="rLayerUBiases"><a href="Data.Neural.HMatrix.Recurrent.Train.html#rLayerUBiases"><span class="hs-identifier">rLayerUBiases</span></a></a><span>   </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">R</span><span> </span><a href="#local-1627597097"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span>
+</span><a name="line-42"></a><span>               </span><span class="hs-special">,</span><span> </span><a name="rLayerUIWeights"><a href="Data.Neural.HMatrix.Recurrent.Train.html#rLayerUIWeights"><span class="hs-identifier">rLayerUIWeights</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">L</span><span> </span><a href="#local-1627597097"><span class="hs-identifier hs-type">o</span></a><span> </span><a href="#local-1627597098"><span class="hs-identifier hs-type">i</span></a><span class="hs-special">)</span><span>
+</span><a name="line-43"></a><span>               </span><span class="hs-special">,</span><span> </span><a name="rLayerUSWeights"><a href="Data.Neural.HMatrix.Recurrent.Train.html#rLayerUSWeights"><span class="hs-identifier">rLayerUSWeights</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">L</span><span> </span><a href="#local-1627597097"><span class="hs-identifier hs-type">o</span></a><span> </span><a href="#local-1627597097"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span>
+</span><a name="line-44"></a><span>               </span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#RLayerU"><span class="hs-identifier hs-type">RLayerU</span></a><span> </span><a href="#local-1627597098"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627597097"><span class="hs-identifier hs-type">o</span></a><span>
+</span><a name="line-45"></a><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Show</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Generic</span><span class="hs-special">)</span><span>
+</span><a name="line-46"></a><span>
+</span><a name="line-47"></a><span class="hs-keyword">data</span><span> </span><a name="NetworkU"><a href="Data.Neural.HMatrix.Recurrent.Train.html#NetworkU"><span class="hs-identifier">NetworkU</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-48"></a><span>    </span><a name="NetUOL"><a href="Data.Neural.HMatrix.Recurrent.Train.html#NetUOL"><span class="hs-identifier">NetUOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><a href="Data.Neural.HMatrix.Types.html#FLayer"><span class="hs-identifier hs-type">FLayer</span></a><span> </span><a href="#local-1627597091"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627597092"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Train.html#NetworkU"><span class="hs-identifier hs-type">NetworkU</span></a><span> </span><a href="#local-1627597091"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
+    NetUIL :: (KnownNat j, KnownNats hs)
+           =&gt; !(RLayerU i j) -&gt; !(NetworkU j hs o) -&gt; NetworkU i (j ': hs) o
+
+data Deltas :: Nat -&gt; [Nat] -&gt; Nat -&gt; * where
+    DeltasOL :: !(R i) -&gt; Deltas i '[] o
+    DeltasIL :: !(R i) -&gt; !(R j) -&gt; !(Deltas j hs o) -&gt; Deltas i (j ': hs) o
+
+data NetStates :: Nat -&gt; [Nat] -&gt; Nat -&gt; * where
+    NetSOL :: NetStates i '[] o
+    NetSIL :: (KnownNat j, KnownNats hs)
+           =&gt; !(R j) -&gt; !(NetStates j hs o) -&gt; NetStates i (j ': hs) o
+
+instance NFData (RLayerU i j)
+
+instance NFData (NetworkU i hs o) where
+    rnf (NetUOL (force -&gt; !_)) = ()
+    rnf (NetUIL (force -&gt; !_) (force -&gt; !_)) = ()
+
+instance NFData (NetStates i hs o) where
+    rnf NetSOL = ()
+    rnf (NetSIL (force -&gt; !_) (force -&gt; !_)) = ()
+
+instance NFData (Deltas i hs o) where
+    rnf (DeltasOL (force -&gt; !_)) = ()
+    rnf (DeltasIL (force -&gt; !_) (force -&gt; !_) (force -&gt; !_)) = ()
+
+instance (KnownNat i, KnownNat o) =&gt; Num (RLayerU i o) where
+    RLayerU b1 wI1 wS1 + RLayerU b2 wI2 wS2 = RLayerU (b1 + b2) (wI1 + wI2) (wS1 + wS2)
+    RLayerU b1 wI1 wS1 * RLayerU b2 wI2 wS2 = RLayerU (b1 * b2) (wI1 * wI2) (wS1 * wS2)
+    RLayerU b1 wI1 wS1 - RLayerU b2 wI2 wS2 = RLayerU (b1 - b2) (wI1 - wI2) (wS1 - wS2)
+    abs (RLayerU b wI wS) = RLayerU (abs b) (abs wI) (abs wS)
+    negate (RLayerU b wI wS) = RLayerU (negate b) (negate wI) (negate wS)
+    signum (RLayerU b wI wS) = RLayerU (signum b) (signum wI) (signum wS)
+    fromInteger = RLayerU &lt;$&gt; fromInteger &lt;*&gt; fromInteger &lt;*&gt; fromInteger
+
+type instance Element (NetworkU i hs o) = Double
+
+-- instance MonoFunctor (NetworkU i hs o) where
+--     omap f n = case n of
+--                  NetUOL l -&gt; NetUOL (omap f l)
+
+zipNetU
+    :: forall i hs o. KnownNet i hs o
+    =&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; FLayer j k -&gt; FLayer j k -&gt; FLayer j k)
+    -&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; RLayerU j k -&gt; RLayerU j k -&gt; RLayerU j k)
+    -&gt; NetworkU i hs o -&gt; NetworkU i hs o
+    -&gt; NetworkU i hs o
+zipNetU ff fr = go
+  where
+    go :: forall j js. KnownNet j js o =&gt; NetworkU j js o -&gt; NetworkU j js o -&gt; NetworkU j js o
+    go n1 n2 = case n1 of
+                 NetUOL l1 -&gt;
+                   case n2 of
+                     NetUOL l2 -&gt; NetUOL (ff l1 l2)
+                 NetUIL l1 n1' -&gt;
+                   case n2 of
+                     NetUIL l2 n2' -&gt;
+                       NetUIL (fr l1 l2) (go n1' n2')
+
+mapNetU
+    :: forall i hs o. KnownNet i hs o
+    =&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; FLayer j k -&gt; FLayer j k)
+    -&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; RLayerU j k -&gt; RLayerU j k)
+    -&gt; NetworkU i hs o
+    -&gt; NetworkU i hs o
+mapNetU ff fr = go
+  where
+    go :: forall j js. KnownNet j js o =&gt; NetworkU j js o -&gt; NetworkU j js o
+    go n = case n of
+             NetUOL l    -&gt; NetUOL (ff l)
+             NetUIL l n' -&gt; NetUIL (fr l) (go n')
+
+pureNetU :: forall i hs o. KnownNet i hs o
+         =&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; FLayer j k)
+         -&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; RLayerU j k)
+         -&gt; NetworkU i hs o
+pureNetU lf lr = go natsList
+  where
+    go :: forall j js. KnownNat j =&gt; NatList js -&gt; NetworkU j js o
+    go nl = case nl of
+           &#216;NL       -&gt; NetUOL lf
+           _ :&lt;# nl' -&gt; lr `NetUIL` go nl'
+
+konstNetU :: KnownNet i hs o
+          =&gt; Double
+          -&gt; NetworkU i hs o
+konstNetU i = pureNetU (konstFLayer i) (konstRLayerU i)
+
+pureDeltas
+    :: forall i hs o. KnownNet i hs o
+    =&gt; (forall j. KnownNat j =&gt; R j)
+    -&gt; Deltas i hs o
+pureDeltas v = go natsList
+  where
+    go :: forall j js. KnownNat j =&gt; NatList js -&gt; Deltas j js o
+    go nl = case nl of
+              &#216;NL       -&gt; DeltasOL v
+              _ :&lt;# nl' -&gt; DeltasIL v v (go nl')
+
+instance KnownNet i hs o =&gt; Num (NetworkU i hs o) where
+    (+) = zipNetU (+) (+)
+    (-) = zipNetU (-) (-)
+    (*) = zipNetU (*) (*)
+    negate = mapNetU negate negate
+    abs = mapNetU abs abs
+    signum = mapNetU signum signum
+    fromInteger i = pureNetU (fromInteger i) (fromInteger i)
+
+konstRLayerU
+    :: (KnownNat i, KnownNat o)
+    =&gt; Double
+    -&gt; RLayerU i o
+konstRLayerU = RLayerU &lt;$&gt; konst &lt;*&gt; konst &lt;*&gt; konst
+
+runRLayerU
+    :: (KnownNat i, KnownNat o)
+    =&gt; (Double -&gt; Double)
+    -&gt; RLayerU i o
+    -&gt; R i
+    -&gt; R o
+    -&gt; (R o, R o)
+runRLayerU f (RLayerU b wI wS) v s = (v', dvmap f v')
+  where
+    v'       = b + wI #&gt; v + wS #&gt; s
+{-# INLINE runRLayerU #-}
+
+runNetworkU
+    :: forall i hs o. (KnownNet i hs o)
+    =&gt; NeuralActs Double
+    -&gt; NetworkU i hs o
+    -&gt; R i
+    -&gt; NetStates i hs o
+    -&gt; (R o, NetStates i hs o)
+runNetworkU (NA f g) = go
+  where
+    go  :: forall j hs'. KnownNat j
+        =&gt; NetworkU j hs' o
+        -&gt; R j
+        -&gt; NetStates j hs' o
+        -&gt; (R o, NetStates j hs' o)
+    go n v ns = case n of
+                  NetUOL l -&gt;
+                    (dvmap g (runFLayer l v), NetSOL)
+                  NetUIL (RLayerU b wI wS) n' -&gt;
+                    case ns of
+                      NetSIL s ns' -&gt;
+                        let v' = dvmap f $ b + wI #&gt; v + wS #&gt; s
+                            (o, nso) = go n' v' ns'
+                        in  (o, NetSIL v' nso)
+{-# INLINE runNetworkU #-}
+
+toNetworkU :: Network i hs o -&gt; (NetStates i hs o, NetworkU i hs o)
+toNetworkU n = case n of
+                 NetOL l    -&gt; (NetSOL, NetUOL l)
+                 NetIL l n' -&gt; let (s, n'') = toNetworkU n'
+                                   s' = NetSIL (rLayerState l) s
+                                   l' = RLayerU (rLayerBiases l)
+                                                (rLayerIWeights l)
+                                                (rLayerSWeights l)
+                               in  (s', NetUIL l' n'')
+{-# INLINE toNetworkU #-}
+
+trainSeries
+    :: forall i hs o. KnownNet i hs o
+    =&gt; NeuralActs (Forward Double)
+    -&gt; Double
+    -&gt; Double
+    -&gt; R o
+    -&gt; [R i]
+    -&gt; Network i hs o
+    -&gt; Network i hs o
+trainSeries na step stepS targ inps0 n0 =
+    trainStates stepS (nu0 - nuShifts) ns0 ds
+  where
+    (ns0, nu0)     = toNetworkU n0
+    (ds, nuShifts) = bptt na step targ inps0 ns0 nu0
+
+trainStates
+    :: forall i hs o. KnownNet i hs o
+    =&gt; Double
+    -&gt; NetworkU i hs o
+    -&gt; NetStates i hs o
+    -&gt; Deltas i hs o
+    -&gt; Network i hs o
+trainStates stepS = go
+  where
+    go  :: forall j js. KnownNat j
+        =&gt; NetworkU j js o
+        -&gt; NetStates j js o
+        -&gt; Deltas j js o
+        -&gt; Network j js o
+    go nu ns ds =
+      case nu of
+        NetUOL l -&gt; NetOL l
+        NetUIL (RLayerU b wI wS :: RLayerU j k) (nu' :: NetworkU k ks o) -&gt;
+          case ns of
+            NetSIL s ns' -&gt;
+              case ds of
+                DeltasIL _ (delS :: R k) ds' -&gt;
+                  let s' = s - konst stepS * delS
+                  in  RLayer b wI wS s' `NetIL` go nu' ns' ds'
+
+bptt
+    :: forall i hs o. KnownNet i hs o
+    =&gt; NeuralActs (Forward Double)
+    -&gt; Double
+    -&gt; R o
+    -&gt; [R i]
+    -&gt; NetStates i hs o
+    -&gt; NetworkU i hs o
+    -&gt; (Deltas i hs o, NetworkU i hs o)
+bptt (NA f g) step targ inps0 ns0 nu0 =
+    case inps0 of
+      []    -&gt; (pureDeltas 0, 0)
+      x0:xs -&gt; let (ds, nuShifts) = goTS x0 ns0 xs
+               in  (ds, konstNetU step * nuShifts)
+  where
+    na'@(NA f_ g_) = NA (fst . diff' f) (fst . diff' g)
+    goTS
+        :: R i
+        -&gt; NetStates i hs o
+        -&gt; [R i]
+        -&gt; (Deltas i hs o, NetworkU i hs o)
+    goTS (force-&gt; !x) (force-&gt; !s) inps =
+        case inps of
+          []    -&gt; let (force-&gt; !d, force-&gt; !nu) = trainFinal x s
+                   in  (d, nu)
+          x':xs -&gt;
+            let (_ , s') = runNetworkU na' nu0 x s
+                (force-&gt; !d , force-&gt; !nus) = goTS x' s' xs
+                -- can &quot;run&quot; values from runNetworkU be re-used here?
+                (d', nu) = trainSample x' s d
+            in  (d', nu + nus)
+    trainFinal
+        :: R i
+        -&gt; NetStates i hs o
+        -&gt; (Deltas i hs o, NetworkU i hs o)
+    trainFinal = go nu0
+      where
+        go  :: forall j js. KnownNat j
+            =&gt; NetworkU j js o
+            -&gt; R j
+            -&gt; NetStates j js o
+            -&gt; (Deltas j js o, NetworkU j js o)
+        go nu x ns =
+          case nu of
+            NetUOL l@(FLayer _ w) -&gt;
+              let y = runFLayer l x
+                  o = g_ `dvmap` y
+                  dEdy = dvmap (diff g) y * (o - targ)
+                  delWs = tr w #&gt; dEdy
+                  shiftsW = outer dEdy x
+                  shiftsB = dEdy -- should be dEdy * 1
+              in  (DeltasOL delWs, NetUOL (FLayer shiftsB shiftsW))
+            NetUIL l@(RLayerU _ wI wS :: RLayerU j k) (nu' :: NetworkU k ks o) -&gt;
+              case ns of
+                NetSIL s ns' -&gt;
+                  let (y, s') = runRLayerU f_ l x s
+                      o = s' -- o = mapR f_ y
+                      (delWs', nu'') = go nu' o ns'
+                      delWs'I :: R k
+                      delWs'I = case delWs' of
+                                  DeltasOL dws -&gt; dws
+                                  DeltasIL dws _ _ -&gt; dws
+                      dEdy = dvmap (diff f) y * delWs'I
+                      delWsI = tr wI #&gt; dEdy
+                      delWsS = tr wS #&gt; dEdy
+                      shiftsWI = outer dEdy x
+                      shiftsWS = outer dEdy s
+                      shiftsB = dEdy -- should be dEdy * 1
+                  in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
+    trainSample
+        :: R i
+        -&gt; NetStates i hs o
+        -&gt; Deltas i hs o
+        -&gt; (Deltas i hs o, NetworkU i hs o)
+    trainSample = go nu0
+      where
+        go  :: forall j js. KnownNat j
+            =&gt; NetworkU j js o
+            -&gt; R j
+            -&gt; NetStates j js o
+            -&gt; Deltas j js o
+            -&gt; (Deltas j js o, NetworkU j js o)
+        go nu x ns ds =
+          case nu of
+            NetUOL _ -&gt; (DeltasOL 0, NetUOL 0)
+            NetUIL l@(RLayerU _ wI wS :: RLayerU j k) (nu' :: NetworkU k ks o) -&gt;
+              case ns of
+                NetSIL s ns' -&gt;
+                  case ds of
+                    DeltasIL _ (delS :: R k) ds' -&gt;
+                      let (y, s') = runRLayerU f_ l x s
+                          o = s' -- o = mapR f_ y
+                          (delWs', nu'') = go nu' o ns' ds'
+                          delWs'I :: R k
+                          delWs'I = case delWs' of
+                                      DeltasOL _ -&gt; delS
+                                      DeltasIL dws _ _ -&gt; dws + delS
+                          dEdy = dvmap (diff f) y * delWs'I
+                          delWsI = tr wI #&gt; dEdy
+                          delWsS = tr wS #&gt; dEdy
+                          shiftsWI = outer dEdy x
+                          shiftsWS = outer dEdy s
+                          shiftsB = dEdy -- should be dEdy * 1
+                      in  (DeltasIL delWsI delWsS delWs', RLayerU shiftsB shiftsWI shiftsWS `NetUIL` nu'')
+
+processSeries
+    :: forall a b n. KnownNat n
+    =&gt; V.Vector (a, b)
+    -&gt; V.Vector (L.V n a, b)
+processSeries ios = fmap (bimap (L.V . V.take n) (V.! n) . V.unzip)
+                  . foldl' (V.zipWith V.snoc) (V.replicate k V.empty)
+                  . V.iterateN (n+1) (V.drop 1)
+                  $ ios
+  where
+    n = fromInteger $ natVal (Proxy :: Proxy n)
+    m = V.length ios
+    k = m - n + 1
+
+</span></pre></body></html>

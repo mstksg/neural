@@ -1,0 +1,602 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE BangPatterns         #-}</span><span>
+</span><a name="line-2"></a><span class="hs-pragma">{-# LANGUAGE DataKinds            #-}</span><span>
+</span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE DeriveFoldable       #-}</span><span>
+</span><a name="line-4"></a><span class="hs-pragma">{-# LANGUAGE DeriveGeneric        #-}</span><span>
+</span><a name="line-5"></a><span class="hs-pragma">{-# LANGUAGE DeriveTraversable    #-}</span><span>
+</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE FlexibleContexts     #-}</span><span>
+</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE FlexibleInstances    #-}</span><span>
+</span><a name="line-8"></a><span class="hs-pragma">{-# LANGUAGE GADTs                #-}</span><span>
+</span><a name="line-9"></a><span class="hs-pragma">{-# LANGUAGE KindSignatures       #-}</span><span>
+</span><a name="line-10"></a><span class="hs-pragma">{-# LANGUAGE PolyKinds            #-}</span><span>
+</span><a name="line-11"></a><span class="hs-pragma">{-# LANGUAGE RankNTypes           #-}</span><span>
+</span><a name="line-12"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables  #-}</span><span>
+</span><a name="line-13"></a><span class="hs-pragma">{-# LANGUAGE StandaloneDeriving   #-}</span><span>
+</span><a name="line-14"></a><span class="hs-pragma">{-# LANGUAGE TupleSections        #-}</span><span>
+</span><a name="line-15"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators        #-}</span><span>
+</span><a name="line-16"></a><span class="hs-pragma">{-# LANGUAGE UndecidableInstances #-}</span><span>
+</span><a name="line-17"></a><span class="hs-pragma">{-# LANGUAGE ViewPatterns         #-}</span><span>
+</span><a name="line-18"></a><span>
+</span><a name="line-19"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Recurrent</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-20"></a><span>
+</span><a name="line-21"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Applicative</span><span>
+</span><a name="line-22"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">DeepSeq</span><span>
+</span><a name="line-23"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Lens</span><span> </span><span class="hs-keyword">hiding</span><span>        </span><span class="hs-special">(</span><span class="hs-special">(</span><span class="hs-operator hs-type">:&lt;</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><a name="line-24"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span>
+</span><a name="line-25"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">State</span><span class="hs-operator">.</span><span class="hs-identifier">Strict</span><span>
+</span><a name="line-26"></a><span class="hs-keyword">import</span><span> </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>
+</span><a name="line-27"></a><span class="hs-keyword">import</span><span> </span><a href="Data.Neural.Utility.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Utility</span></a><span>
+</span><a name="line-28"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Proxy</span><span>
+</span><a name="line-29"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Reflection</span><span>
+</span><a name="line-30"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Type</span><span class="hs-operator">.</span><span class="hs-identifier">Product</span><span>
+</span><a name="line-31"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">GHC</span><span class="hs-operator">.</span><span class="hs-identifier">Generics</span><span>
+</span><a name="line-32"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">GHC</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
+</span><a name="line-33"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">GHC</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span class="hs-operator">.</span><span class="hs-identifier">List</span><span>
+</span><a name="line-34"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Linear</span><span>
+</span><a name="line-35"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Linear</span><span class="hs-operator">.</span><span class="hs-identifier">V</span><span>
+</span><a name="line-36"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Type</span><span class="hs-operator">.</span><span class="hs-identifier">Class</span><span class="hs-operator">.</span><span class="hs-identifier">Known</span><span>
+</span><a name="line-37"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Binary</span><span>      </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">B</span><span>
+</span><a name="line-38"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Vector</span><span>      </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">V</span><span>
+</span><a name="line-39"></a><span>
+</span><a name="line-40"></a><span class="hs-keyword">data</span><span> </span><a name="RNode"><a href="Data.Neural.Recurrent.html#RNode"><span class="hs-identifier">RNode</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-41"></a><span>    </span><a name="RNode"><a href="Data.Neural.Recurrent.html#RNode"><span class="hs-identifier">RNode</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">{</span><span> </span><a name="rNodeBias"><a href="Data.Neural.Recurrent.html#rNodeBias"><span class="hs-identifier">rNodeBias</span></a></a><span>     </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><a href="#local-1627583321"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-42"></a><span>             </span><span class="hs-special">,</span><span> </span><a name="rNodeIWeights"><a href="Data.Neural.Recurrent.html#rNodeIWeights"><span class="hs-identifier">rNodeIWeights</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">V</span><span> </span><a href="#local-1627583322"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627583321"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span>
+</span><a name="line-43"></a><span>             </span><span class="hs-special">,</span><span> </span><a name="rNodeSWeights"><a href="Data.Neural.Recurrent.html#rNodeSWeights"><span class="hs-identifier">rNodeSWeights</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">V</span><span> </span><a href="#local-1627583323"><span class="hs-identifier hs-type">s</span></a><span> </span><a href="#local-1627583321"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span>
+</span><a name="line-44"></a><span>             </span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.Recurrent.html#RNode"><span class="hs-identifier hs-type">RNode</span></a><span> </span><a href="#local-1627583322"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627583323"><span class="hs-identifier hs-type">s</span></a><span> </span><a href="#local-1627583321"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-45"></a><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Show</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Generic</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Foldable</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Traversable</span><span class="hs-special">)</span><span>
+</span><a name="line-46"></a><span>
+</span><a name="line-47"></a><span class="hs-keyword">data</span><span> </span><a name="RLayer"><a href="Data.Neural.Recurrent.html#RLayer"><span class="hs-identifier">RLayer</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-48"></a><span>    </span><a name="RLayer"><a href="Data.Neural.Recurrent.html#RLayer"><span class="hs-identifier">RLayer</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-special">{</span><span> </span><a name="rLayerNodes"><a href="Data.Neural.Recurrent.html#rLayerNodes"><span class="hs-identifier">rLayerNodes</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">V</span><span> </span><a href="#local-1627583318"><span class="hs-identifier hs-type">o</span></a><span> </span><span class="hs-special">(</span><a href="Data.Neural.Recurrent.html#RNode"><span class="hs-identifier hs-type">RNode</span></a><span> </span><a href="#local-1627583319"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627583318"><span class="hs-identifier hs-type">o</span></a><span> </span><a href="#local-1627583320"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><a name="line-49"></a><span>              </span><span class="hs-special">,</span><span> </span><a name="rLayerState"><a href="Data.Neural.Recurrent.html#rLayerState"><span class="hs-identifier">rLayerState</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><span class="hs-identifier hs-type">V</span><span> </span><a href="#local-1627583318"><span class="hs-identifier hs-type">o</span></a><span> </span><a href="#local-1627583320"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span>
+</span><a name="line-50"></a><span>              </span><span class="hs-special">}</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.Recurrent.html#RLayer"><span class="hs-identifier hs-type">RLayer</span></a><span> </span><a href="#local-1627583319"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627583318"><span class="hs-identifier hs-type">o</span></a><span> </span><a href="#local-1627583320"><span class="hs-identifier hs-type">a</span></a><span>
+</span><a name="line-51"></a><span>  </span><span class="hs-keyword">deriving</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">Show</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Functor</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Foldable</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Traversable</span><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">Generic</span><span class="hs-special">)</span><span>
+</span><a name="line-52"></a><span>
+</span><a name="line-53"></a><span class="hs-keyword">data</span><span> </span><a name="Network"><a href="Data.Neural.Recurrent.html#Network"><span class="hs-identifier">Network</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-54"></a><span>    </span><a name="NetOL"><a href="Data.Neural.Recurrent.html#NetOL"><span class="hs-identifier">NetOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><a href="Data.Neural.Types.html#FLayer"><span class="hs-identifier hs-type">FLayer</span></a><span> </span><a href="#local-1627583310"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627583311"><span class="hs-identifier hs-type">o</span></a><span> </span><a href="#local-1627583312"><span class="hs-identifier hs-type">a</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.Recurrent.html#Network"><span class="hs-identifier hs-type">Network</span></a><span> </span><a href="#local-1627583310"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o a
+    NetIL :: (KnownNat j, KnownNats hs) =&gt; !(RLayer i j a) -&gt; !(Network j hs o a) -&gt; Network i (j ': hs) o a
+
+infixr 5 `NetIL`
+
+data NetActs :: Nat -&gt; [Nat] -&gt; Nat -&gt; * -&gt; * where
+    NetAOL :: !(V o a) -&gt; NetActs i hs o a
+    NetAIL :: (KnownNat j, KnownNats hs) =&gt; !(V j a) -&gt; !(NetActs j hs o a) -&gt; NetActs i (j ': js) o a
+
+infixr 5 `NetAIL`
+
+data SomeNet :: * -&gt; * where
+    SomeNet :: KnownNet i hs o =&gt; Network i hs o a -&gt; SomeNet a
+
+data OpaqueNet :: Nat -&gt; Nat -&gt; * -&gt; * where
+    OpaqueNet :: KnownNats hs =&gt; Network i hs o a -&gt; OpaqueNet i o a
+
+
+instance Functor (RNode i s) where
+    fmap f (RNode b i s) = RNode (f b) (fmap f i) (fmap f s)
+    {-# INLINE fmap #-}
+
+instance (Applicative (V i), Applicative (V s)) =&gt; Applicative (RNode i s) where
+    pure x = RNode x (pure x) (pure x)
+    {-# INLINE pure #-}
+    RNode fb fi fs &lt;*&gt; RNode xb xi xs = RNode (fb xb) (fi &lt;*&gt; xi) (fs &lt;*&gt; xs)
+    {-# INLINE (&lt;*&gt;) #-}
+
+instance (Additive (V i), Additive (V s)) =&gt; Additive (RNode i s) where
+    zero = RNode 0 zero zero
+    {-# INLINE zero #-}
+    RNode b1 i1 s1 ^+^ RNode b2 i2 s2 = RNode (b1 + b2) (i1 ^+^ i2) (s1 ^+^ s2)
+    {-# INLINE (^+^) #-}
+    RNode b1 i1 s1 ^-^ RNode b2 i2 s2 = RNode (b1 - b2) (i1 ^-^ i2) (s1 ^-^ s2)
+    {-# INLINE (^-^) #-}
+    lerp a (RNode b1 i1 s1) (RNode b2 i2 s2) = RNode (a * b1 + (1 - a) * b2) (lerp a i1 i2) (lerp a s1 s2)
+    {-# INLINE lerp #-}
+    liftU2 f (RNode b1 i1 s1) (RNode b2 i2 s2) = RNode (f b1 b2) (liftU2 f i1 i2) (liftU2 f s1 s2)
+    {-# INLINE liftU2 #-}
+    liftI2 f (RNode b1 i1 s1) (RNode b2 i2 s2) = RNode (f b1 b2) (liftI2 f i1 i2) (liftI2 f s1 s2)
+    {-# INLINE liftI2 #-}
+
+instance (KnownNat i, KnownNat s, Random a) =&gt; Random (RNode i s a) where
+    random = runRand $
+        RNode &lt;$&gt; getRandom &lt;*&gt; getRandom &lt;*&gt; getRandom
+    randomR (RNode bmn imn smn, RNode bmx imx smx) = runRand $
+        RNode &lt;$&gt; getRandomR (bmn, bmx)
+              &lt;*&gt; getRandomR (imn, imx)
+              &lt;*&gt; getRandomR (smn, smx)
+
+instance NFData a =&gt; NFData (RNode i s a)
+instance (KnownNat i, KnownNat s, B.Binary a) =&gt; B.Binary (RNode i s a)
+
+instance NFData a =&gt; NFData (RLayer i o a)
+
+instance (KnownNat i, KnownNat o) =&gt; Applicative (RLayer i o) where
+    pure x = RLayer (pure (pure x)) (pure x)
+    {-# INLINE pure #-}
+    RLayer l s &lt;*&gt; RLayer l' s' = RLayer (liftA2 (&lt;*&gt;) l l') (s &lt;*&gt; s')
+    {-# INLINE (&lt;*&gt;) #-}
+
+instance (B.Binary a, KnownNat i, KnownNat o) =&gt; B.Binary (RLayer i o a)
+
+instance (KnownNat i, KnownNat o, Random a) =&gt; Random (RLayer i o a) where
+    random = runRand $ RLayer &lt;$&gt; getRandom &lt;*&gt; getRandom
+    randomR (RLayer lmn smn, RLayer lmx smx) = runRand $
+        RLayer &lt;$&gt; getRandomR (lmn, lmx) &lt;*&gt; getRandomR (smn, smx)
+
+instance NFData a =&gt; NFData (NetActs i hs o a) where
+    rnf (NetAOL (force -&gt; !_)) = ()
+    rnf (NetAIL (force -&gt; !_) (force -&gt; !_)) = ()
+
+
+runRLayer :: forall i o a. (KnownNat i, KnownNat o, Num a)
+          =&gt; (a -&gt; a)
+          -&gt; RLayer i o a
+          -&gt; V i a
+          -&gt; (V o a, RLayer i o a)
+runRLayer f l v = (v', l { rLayerState = f &lt;$&gt; v' })
+  where
+    v'       = rLayerNodes l !* RNode 1 v (rLayerState l)
+{-# INLINE runRLayer #-}
+
+runRLayerS :: forall i o a m. (KnownNat i, KnownNat o, Num a, MonadState (RLayer i o a) m)
+           =&gt; (a -&gt; a)
+           -&gt; V i a
+           -&gt; m (V o a)
+runRLayerS f v = state (\l -&gt; runRLayer f l v)
+{-# INLINE runRLayerS #-}
+
+netActsOut :: NetActs i hs o a -&gt; V o a
+netActsOut n = case n of
+                 NetAIL _ n' -&gt; netActsOut n'
+                 NetAOL l    -&gt; l
+
+
+runNetwork :: forall i hs o a. (Num a, KnownNat i)
+           =&gt; NeuralActs a
+           -&gt; Network i hs o a
+           -&gt; V i a
+           -&gt; (V o a, Network i hs o a)
+runNetwork (NA f g) = go
+  where
+    go :: forall i' hs'. KnownNat i'
+       =&gt; Network i' hs' o a
+       -&gt; V i' a
+       -&gt; (V o a, Network i' hs' o a)
+    go n v = case n of
+               NetOL l    -&gt; (g &lt;$&gt; runFLayer l v, n)
+               NetIL l nI -&gt; let (v' , l')  = runRLayer f l v
+                                 (v'', nI') = go nI (f &lt;$&gt; v')
+                             in  (v'', NetIL l' nI')
+{-# INLINE runNetwork #-}
+
+runNetworkS :: (Num a, KnownNat i, MonadState (Network i hs o a) m)
+            =&gt; NeuralActs a
+            -&gt; V i a
+            -&gt; m (V o a)
+runNetworkS na v = state (\n -&gt; runNetwork na n v)
+{-# INLINE runNetworkS #-}
+
+runNetworkActs :: forall i hs o a. (KnownNat i, Num a)
+               =&gt; NeuralActs a
+               -&gt; Network i hs o a
+               -&gt; V i a
+               -&gt; (NetActs i hs o a, Network i hs o a)
+runNetworkActs (NA f g) = go
+  where
+    go :: forall i' hs'. KnownNat i'
+       =&gt; Network i' hs' o a
+       -&gt; V i' a
+       -&gt; (NetActs i' hs' o a, Network i' hs' o a)
+    go n v = case n of
+               NetOL l    -&gt; (NetAOL (g &lt;$&gt; runFLayer l v), n)
+               NetIL l nI -&gt; let (v' , l') = runRLayer f l v
+                                 vRes      = f &lt;$&gt; v'
+                                 (nA, nI') = go nI vRes
+                             in  (NetAIL vRes nA, NetIL l' nI')
+{-# INLINE runNetworkActs #-}
+
+runNetworkActsS :: forall i hs o m a. (KnownNat i, Num a, MonadState (Network i hs o a) m)
+                =&gt; NeuralActs a
+                -&gt; V i a
+                -&gt; m (NetActs i hs o a)
+runNetworkActsS na v = state (\n -&gt; runNetworkActs na n v)
+{-# INLINE runNetworkActsS #-}
+
+runNetStream :: forall i hs o a. (Num a, KnownNat i)
+             =&gt; NeuralActs a
+             -&gt; Network i hs o a
+             -&gt; [V i a]
+             -&gt; ([V o a], Network i hs o a)
+runNetStream na n vs = runState (mapM (runNetworkS na) vs) n
+{-# INLINE runNetStream #-}
+
+runNetStream_
+    :: forall i hs o a. (Num a, KnownNat i, NFData a)
+    =&gt; NeuralActs a
+    -&gt; Network i hs o a
+    -&gt; [V i a]
+    -&gt; [V o a]
+runNetStream_ na = go
+  where
+    go :: Network i hs o a -&gt; [V i a] -&gt; [V o a]
+    go n (v:vs) = let (u, n') = runNetwork na n v
+                  in  u `deepseq` n' `deepseq` u : go n' vs
+    go _ []     = []
+{-# INLINE runNetStream_ #-}
+
+prerunNetStream
+    :: forall i hs o a. (Num a, KnownNat i, NFData a)
+    =&gt; NeuralActs a
+    -&gt; Network i hs o a
+    -&gt; [V i a]
+    -&gt; Network i hs o a
+prerunNetStream na = go
+  where
+    go :: Network i hs o a -&gt; [V i a] -&gt; Network i hs o a
+    go n (v:vs) = let (_, n') = runNetwork na n v
+                  in  n' `deepseq` go n' vs
+    go n []     = n
+
+runNetStreamActs :: forall i hs o a. (Num a, KnownNat i)
+                 =&gt; NeuralActs a
+                 -&gt; Network i hs o a
+                 -&gt; [V i a]
+                 -&gt; ([NetActs i hs o a], Network i hs o a)
+runNetStreamActs na n vs = runState (mapM (runNetworkActsS na) vs) n
+{-# INLINE runNetStreamActs #-}
+
+
+runNetStreamActs_ :: forall i hs o a. (Num a, KnownNat i, NFData a)
+                  =&gt; NeuralActs a
+                  -&gt; Network i hs o a
+                  -&gt; [V i a]
+                  -&gt; [NetActs i hs o a]
+runNetStreamActs_ na = go
+  where
+    go :: Network i hs o a -&gt; [V i a] -&gt; [NetActs i hs o a]
+    go n (v:vs) = let (u, n') = runNetworkActs na n v
+                  in  u `deepseq` n' `deepseq` u : go n' vs
+    go _ []     = []
+{-# INLINE runNetStreamActs_ #-}
+
+
+
+runNetFeedback :: forall i hs o a. (Num a, KnownNat i)
+               =&gt; NeuralActs a
+               -&gt; (V o a -&gt; V i a)
+               -&gt; Network i hs o a
+               -&gt; V i a
+               -&gt; [(V o a, Network i hs o a)]
+runNetFeedback na nxt = go
+  where
+    go :: Network i hs o a -&gt; V i a -&gt; [(V o a, Network i hs o a)]
+    go n v = let res@(v', n') = runNetwork na n v
+             in  res : go n' (nxt v')
+{-# INLINE runNetFeedback #-}
+
+runNetFeedback_ :: forall i hs o a. (Num a, KnownNat i)
+                =&gt; NeuralActs a
+                -&gt; (V o a -&gt; V i a)
+                -&gt; Network i hs o a
+                -&gt; V i a
+                -&gt; [V o a]
+runNetFeedback_ na nxt = go
+  where
+    go :: Network i hs o a -&gt; V i a -&gt; [V o a]
+    go n v = let (v', n') = runNetwork na n v
+             in  v' : go n' (nxt v')
+{-# INLINE runNetFeedback_ #-}
+
+runNetFeedbackM_ :: forall i hs o a m. (Num a, KnownNat i, Monad m)
+                 =&gt; NeuralActs a
+                 -&gt; (V o a -&gt; m (V i a))
+                 -&gt; Network i hs o a
+                 -&gt; Int
+                 -&gt; V i a
+                 -&gt; m [V o a]
+runNetFeedbackM_ na nxt = go
+  where
+    go :: Network i hs o a -&gt; Int -&gt; V i a -&gt; m [V o a]
+    go n i v | i &lt;= 0    = return []
+             | otherwise = do
+                 let (v', n') = runNetwork na n v
+                 vs &lt;- go n' (i - 1) =&lt;&lt; nxt v'
+                 return $ v' : vs
+
+runNetActsFeedbackM_
+    :: forall i hs o m a. (Num a, KnownNat i, Monad m)
+    =&gt; NeuralActs a
+    -&gt; (V o a -&gt; m (V i a))
+    -&gt; Network i hs o a
+    -&gt; Int
+    -&gt; V i a
+    -&gt; m [NetActs i hs o a]
+runNetActsFeedbackM_ na nxt = go
+  where
+    go :: Network i hs o a -&gt; Int -&gt; V i a -&gt; m [NetActs i hs o a]
+    go n i v | i &lt;= 0    = return []
+             | otherwise = do
+                 let (nacts, n') = runNetworkActs na n v
+                     v' = netActsOut nacts
+                 ns &lt;- go n' (i - 1) =&lt;&lt; nxt v'
+                 return $ nacts : ns
+
+
+
+randomNetwork :: (MonadRandom m, Random (Network i hs o a), Num a)
+              =&gt; m (Network i hs o a)
+randomNetwork = fmap (subtract 1 . (*2)) &lt;$&gt; getRandom
+
+randomNetwork' :: (KnownNet i hs o, MonadRandom m, Random (Network i hs o a), Num a)
+               =&gt; m (Network i hs o a)
+randomNetwork' = resetNetState &lt;$&gt; randomNetwork
+
+resetNetState :: forall i hs o a. (KnownNat o, KnownNat i, Num a) =&gt; Network i hs o a -&gt; Network i hs o a
+resetNetState n = runIdentity (tNetStates (\_ -&gt; Identity (pure 0)) n)
+
+
+-- | Some traversals
+-- TODO: sharing with go
+
+tNetRLayers :: (Applicative f, KnownNat o, KnownNat i)
+            =&gt; (forall i' o'. (KnownNat i', KnownNat o') =&gt; RLayer i' o' a -&gt; f (RLayer i' o' a))
+            -&gt; Network i hs o a
+            -&gt; f (Network i hs o a)
+tNetRLayers f n = case n of
+                    NetOL _    -&gt; pure n
+                    NetIL l n' -&gt; NetIL &lt;$&gt; f l &lt;*&gt; tNetRLayers f n'
+{-# INLINE tNetRLayers #-}
+
+tRLayerNodes :: Lens (RLayer i o a)      (RLayer i' o a)
+                     (V o (RNode i o a)) (V o (RNode i' o a))
+tRLayerNodes f l = (\w -&gt; l { rLayerNodes = w }) &lt;$&gt; f (rLayerNodes l)
+{-# INLINE tRLayerNodes #-}
+
+tRLayerState :: Lens' (RLayer i o a) (V o a)
+tRLayerState f l = (\s -&gt; l { rLayerState = s }) &lt;$&gt; f (rLayerState l)
+{-# INLINE tRLayerState #-}
+
+tNetStates :: (Applicative f, KnownNat o, KnownNat i)
+           =&gt; (forall h. KnownNat h =&gt; V h a -&gt; f (V h a))
+           -&gt; Network i hs o a
+           -&gt; f (Network i hs o a)
+tNetStates f = tNetRLayers (tRLayerState f)
+{-# INLINE tNetStates #-}
+
+tNetOLayer :: (Functor f, KnownNat i)
+           =&gt; (forall j. KnownNat j =&gt; FLayer j o a -&gt; f (FLayer j o' a))
+           -&gt; Network i hs o a
+           -&gt; f (Network i hs o' a)
+tNetOLayer f n = case n of
+                   NetOL l    -&gt; NetOL   &lt;$&gt; f l
+                   NetIL l n' -&gt; NetIL l &lt;$&gt; tNetOLayer f n'
+
+tNetLayers :: (Applicative f, KnownNat i)
+           =&gt; (forall j. KnownNat j =&gt; FLayer j o a -&gt; f (FLayer j o' b))
+           -&gt; (forall i' j. KnownNat j =&gt; RLayer i' j a -&gt; f (RLayer i' j b))
+           -&gt; Network i hs o a
+           -&gt; f (Network i hs o' b)
+tNetLayers f g n = case n of
+                     NetOL l    -&gt; NetOL &lt;$&gt; f l
+                     NetIL l n' -&gt; NetIL &lt;$&gt; g l &lt;*&gt; tNetLayers f g n'
+
+
+tRNodeSWeights :: Lens (RNode i s a) (RNode i s' a) (V s a) (V s' a)
+tRNodeSWeights f n = (\w -&gt; n { rNodeSWeights = w }) &lt;$&gt; f (rNodeSWeights n)
+
+tRNodeIWeights :: Lens (RNode i s a) (RNode i' s a) (V i a) (V i' a)
+tRNodeIWeights f n = (\w -&gt; n { rNodeIWeights = w }) &lt;$&gt; f (rNodeIWeights n)
+
+tRNodeWeights :: Lens' (RNode i s a) (V i a, V s a)
+tRNodeWeights f n = (\(wI, wS) -&gt; n { rNodeIWeights = wI, rNodeSWeights = wS })
+                &lt;$&gt; f (rNodeIWeights n, rNodeSWeights n)
+
+-- | Validating
+
+seriesError :: (KnownNat i, KnownNat o, Num a, Traversable t)
+            =&gt; NeuralActs a
+            -&gt; Network i hs o a
+            -&gt; t (V i a, V o a)
+            -&gt; (a, Network i hs o a)
+seriesError na n ios = runState (seriesErrorS na ios) n
+{-# INLINE seriesError #-}
+
+seriesError_ :: (KnownNat i, KnownNat o, Num a, Traversable t)
+             =&gt; NeuralActs a
+             -&gt; Network i hs o a
+             -&gt; t (V i a, V o a)
+             -&gt; a
+seriesError_ na n ios = evalState (seriesErrorS na ios) n
+{-# INLINE seriesError_ #-}
+
+
+seriesErrorS :: forall i hs o a t m. (KnownNat i, KnownNat o, Num a, MonadState (Network i hs o a) m, Traversable t)
+             =&gt; NeuralActs a
+             -&gt; t (V i a, V o a)
+             -&gt; m a
+seriesErrorS na = foldM f 0
+  where
+    f :: a -&gt; (V i a, V o a) -&gt; m a
+    f !x (i, o) = do
+      res &lt;- runNetworkS na i
+      let err2 = o `qd` res
+      err2 `seq` return (x + err2)
+    {-# INLINE f #-}
+{-# INLINE seriesErrorS #-}
+
+-- | Boilerplate instances
+
+instance Functor (Network i hs o) where
+    fmap f n = case n of
+                 NetOL l -&gt; NetOL (fmap f l)
+                 NetIL l n' -&gt; fmap f l `NetIL` fmap f n'
+    {-# INLINE fmap #-}
+
+-- instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs) =&gt; Applicative (Network i hs o) where
+
+instance (KnownNet i hs o) =&gt; Applicative (Network i hs o) where
+    pure x = case natsList :: NatList hs of
+               &#216;NL     -&gt; NetOL (pure x)
+               _ :&lt;# _ -&gt; pure x `NetIL` pure x
+    {-# INLINE pure #-}
+    NetOL f     &lt;*&gt; NetOL x     = NetOL (f &lt;*&gt; x)
+    NetIL fi fr &lt;*&gt; NetIL xi xr = NetIL (fi &lt;*&gt; xi) (fr &lt;*&gt; xr)
+    {-# INLINE (&lt;*&gt;) #-}
+
+instance Applicative (Network i hs o) =&gt; Additive (Network i hs o) where
+    zero = pure 0
+    {-# INLINE zero #-}
+    (^+^) = liftA2 (+)
+    {-# INLINE (^+^) #-}
+    (^-^) = liftA2 (-)
+    {-# INLINE (^-^) #-}
+    liftU2 = liftA2
+    {-# INLINE liftU2 #-}
+    liftI2 = liftA2
+    {-# INLINE liftI2 #-}
+
+instance (Applicative (Network i hs o)) =&gt; Metric (Network i hs o)
+
+instance (KnownNet i hs o, Random a) =&gt; Random (Network i hs o a) where
+    random = runState $ do
+      case natsList :: NatList hs of
+        &#216;NL     -&gt; NetOL &lt;$&gt; state random
+        _ :&lt;# _ -&gt; NetIL &lt;$&gt; state random &lt;*&gt; state random
+    randomR rng = runState $ do
+      case rng of
+        (NetOL rmn, NetOL rmx)         -&gt; NetOL &lt;$&gt; state (randomR (rmn, rmx))
+        (NetIL lmn nmn, NetIL lmx nmx) -&gt; NetIL &lt;$&gt; state (randomR (lmn, lmx))
+                                                &lt;*&gt; state (randomR (nmn, nmx))
+
+instance (KnownNat i, KnownNats hs, KnownNat o, Known (Prod Proxy) hs, B.Binary a) =&gt; B.Binary (Network i hs o a) where
+    put (NetOL l)    = B.put l
+    put (NetIL l n') = B.put l *&gt; B.put n'
+    get = case natsList :: NatList hs of
+            &#216;NL     -&gt; NetOL &lt;$&gt; B.get
+            _ :&lt;# _ -&gt; NetIL &lt;$&gt; B.get &lt;*&gt; B.get
+
+instance NFData a =&gt; NFData (Network i hs o a) where
+    rnf (NetOL (force -&gt; !_)) = ()
+    rnf (NetIL (force -&gt; !_) (force -&gt; !_)) = ()
+
+deriving instance Show a =&gt; Show (Network i hs o a)
+deriving instance Foldable (Network i hs o)
+deriving instance Traversable (Network i hs o)
+
+instance (KnownNat i, KnownNat s) =&gt; Nudges (RNode i s) where
+    nudges f (RNode b i s) = RNode (RNode (f b) i s)
+                                   (flip (RNode b) s &lt;$&gt; nudges f i)
+                                   (RNode b i &lt;$&gt; nudges f s)
+
+instance (KnownNat i, KnownNat o) =&gt; Nudges (RLayer i o) where
+    nudges f (RLayer l s) = RLayer l' (RLayer l &lt;$&gt; nudges f s)
+      where
+        l' = (fmap.fmap) (`RLayer` s)
+           . V . V.generate (dim l) $ \i -&gt;
+               let b'  = accumV (\(RNode b iw sw) _ -&gt; RNode (f b) iw sw) l [(i,())]
+                   iw' = V . V.generate dimI $ \j -&gt; accumV (\(RNode b iw sw) _ -&gt; RNode b (accumV (\x _ -&gt; f x) iw [(j,())]) sw) l [(i,())]
+                   sw' = V . V.generate dimO $ \j -&gt; accumV (\(RNode b iw sw) _ -&gt; RNode b iw (accumV (\x _ -&gt; f x) sw [(j,())])) l [(i,())]
+               in  RNode b' iw' sw'
+        dimI = reflectDim (Proxy :: Proxy i)
+        dimO = reflectDim (Proxy :: Proxy o)
+
+instance (KnownNat i, KnownNat o) =&gt; Nudges (Network i hs o) where
+    nudges f (NetOL l) = NetOL . fmap NetOL $ nudges f l
+    nudges f (NetIL l n) = NetIL (flip NetIL n &lt;$&gt; nudges f l)
+                                 (NetIL l      &lt;$&gt; nudges f n)
+
+deriving instance Show a =&gt; Show (SomeNet a)
+deriving instance Functor SomeNet
+deriving instance Foldable SomeNet
+deriving instance Traversable SomeNet
+
+instance B.Binary a =&gt; B.Binary (SomeNet a) where
+    put sn = case sn of
+               SomeNet (n :: Network i hs o a) -&gt; do
+                 B.put $ natVal (Proxy :: Proxy i)
+                 B.put $ natVal (Proxy :: Proxy o)
+                 B.put $ OpaqueNet n
+    get = do
+      i &lt;- B.get
+      o &lt;- B.get
+      reifyNat i $ \(Proxy :: Proxy i) -&gt;
+        reifyNat o $ \(Proxy :: Proxy o) -&gt; do
+          oqn &lt;- B.get :: B.Get (OpaqueNet i o a)
+          return $ case oqn of
+                     OpaqueNet n -&gt; SomeNet n
+
+deriving instance Show a =&gt; Show (OpaqueNet i o a)
+deriving instance Functor (OpaqueNet i o)
+deriving instance Foldable (OpaqueNet i o)
+deriving instance Traversable (OpaqueNet i o)
+
+instance (KnownNat i, KnownNat o, B.Binary a) =&gt; B.Binary (OpaqueNet i o a) where
+    put oqn = case oqn of
+                OpaqueNet n -&gt; do
+                  case n of
+                    NetOL l -&gt; do
+                      B.put True
+                      B.put l
+                    NetIL (l :: RLayer i j a) (n' :: Network j js o a) -&gt; do
+                      B.put False
+                      B.put $ natVal (Proxy :: Proxy j)
+                      B.put l
+                      B.put (OpaqueNet n')
+    get = do
+      isOL &lt;- B.get
+      if isOL
+        then do
+          OpaqueNet . NetOL &lt;$&gt; B.get
+        else do
+          j &lt;- B.get
+          reifyNat j $ \(Proxy :: Proxy j) -&gt; do
+            l   &lt;- B.get :: B.Get (RLayer i j a)
+            nqo &lt;- B.get :: B.Get (OpaqueNet j o a)
+            return $ case nqo of
+              OpaqueNet n -&gt; OpaqueNet $ l `NetIL` n
+
+asOpaqueNet :: SomeNet a
+            -&gt; (forall i o. (KnownNat i, KnownNat o) =&gt; OpaqueNet i o a -&gt; r)
+            -&gt; r
+asOpaqueNet sn f = case sn of
+                     SomeNet n -&gt; f (OpaqueNet n)
+
+-- randomNetworkFrom :: (KnownNat i, KnownNats hs, KnownNat o, MonadRandom m, Random a, Num a)
+--                   =&gt; Proxy i
+--                   -&gt; Prod Proxy hs
+--                   -&gt; Proxy o
+--                   -&gt; m (Network i hs o a)
+-- randomNetworkFrom _ hs o =
+--     case hs of
+--       &#216;       -&gt; NetOL . fmap (subtract 1 . (*2)) &lt;$&gt; getRandom
+--       j :&lt; js -&gt; do
+--         l &lt;- fmap (subtract 1 . (*2)) &lt;$&gt; getRandom
+--         n &lt;- randomNetworkFrom j js o
+--         return $ l `NetIL` n
+
+-- netApplicative :: (KnownNat i, KnownNats hs, KnownNat o)
+--                =&gt; Proxy i
+--                -&gt; Prod Proxy hs
+--                -&gt; Proxy o
+--                -&gt; Dict (Applicative (Network i hs o))
+-- netApplicative _ hs o = case hs of
+--                           &#216;       -&gt; Dict
+--                           j :&lt; js -&gt; case netApplicative j js o of
+--                                        Dict -&gt; Dict
+
+-- netInstance :: forall i hs o f n. (KnownNat i, KnownNats hs, KnownNat o)
+--             =&gt; (forall i'. (KnownNat i', KnownNat o) :- f (n i' '[] o))
+--             -&gt; (forall i' j js. (KnownNat i', KnownNat j, KnownNat o, f (n j js o)) :- f (n i' (j ': js) o))
+--             -&gt; Proxy i
+--             -&gt; Prod Proxy hs
+--             -&gt; Proxy o
+--             -&gt; Dict (f (n i hs o))
+-- netInstance eBase eRec = go
+--   where
+--     go :: forall i' hs'. (KnownNat i', KnownNats hs')
+--        =&gt; Proxy i'
+--        -&gt; Prod Proxy hs'
+--        -&gt; Proxy o
+--        -&gt; Dict (f (n i' hs' o))
+--     go _ hs o = case hs of
+--                   &#216; -&gt; Dict \\ (eBase :: (KnownNat i', KnownNat o) :- f (n i' '[] o))
+--                   (j :: Proxy j) :&lt; (js :: Prod Proxy js) -&gt;
+--                     case go j js o of
+--                       Dict -&gt; Dict \\ (eRec :: (KnownNat i', KnownNat j, KnownNat o, f (n j js o)) :- f (n i' (j ': js) o))
+</span></pre></body></html>
