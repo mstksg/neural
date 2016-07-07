@@ -3,10 +3,12 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE PolyKinds           #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE TypeApplications    #-}
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE TypeOperators       #-}
 {-# LANGUAGE ViewPatterns        #-}
@@ -15,18 +17,20 @@ module Data.Neural.HMatrix.FeedForward where
 
 -- import GHC.TypeLits
 -- import GHC.TypeLits.List
-import Control.DeepSeq
-import Control.Monad.Primitive
-import Control.Monad.Random
-import Data.MonoTraversable
-import Data.Neural.HMatrix.FLayer
-import Data.Neural.Types            (NeuralActs(..))
-import Data.Singletons
-import Data.Singletons.Prelude
-import Data.Singletons.TypeLits
-import Numeric.AD.Rank1.Forward
-import Numeric.LinearAlgebra.Static
-import System.Random.MWC
+import           Control.DeepSeq
+import           Control.Monad.Primitive
+import           Control.Monad.Random
+import           Data.MonoTraversable
+import           Data.Neural.HMatrix.FLayer
+import           Data.Neural.Types            (NeuralActs(..))
+import           Data.Reflection
+import           Data.Singletons
+import           Data.Singletons.Prelude
+import           Data.Singletons.TypeLits
+import           Numeric.AD.Rank1.Forward
+import           Numeric.LinearAlgebra.Static
+import           System.Random.MWC
+import qualified Data.Binary                  as B
 
 type KnownNet i hs o = (KnownNat i, SingI hs, KnownNat o)
 
@@ -38,10 +42,10 @@ data Network :: Nat -> [Nat] -> Nat -> * where
 infixr 5 `NetIL`
 
 data SomeNet :: * where
-    SomeNet :: KnownNet i hs o => Network i hs o -> SomeNet
+    SomeNet :: (KnownNat i, KnownNat o) => Network i hs o -> SomeNet
 
 data OpaqueNet :: Nat -> Nat -> * where
-    OpaqueNet :: SingI hs => Network i hs o -> OpaqueNet i o
+    OpaqueNet :: Network i hs o -> OpaqueNet i o
 
 -- deriving instance KnownNet i hs o => Show (Network i hs o)
 -- deriving instance Show SomeNet
@@ -52,6 +56,48 @@ type instance Element (Network i hs o) = Double
 instance NFData (Network i hs o) where
     rnf (NetOL (force -> !_)) = ()
     rnf (NetIL (force -> !_) (force -> !_)) = ()
+
+putNet :: (KnownNat i, KnownNat o) => Network i hs o -> B.Put
+putNet = \case NetOL w   -> B.put w
+               NetIL w n -> B.put w *> putNet n
+
+getNet :: (KnownNat i, KnownNat o) => Sing hs -> B.Get (Network i hs o)
+getNet = \case SNil           -> NetOL <$> B.get
+               SNat `SCons` s -> NetIL <$> B.get <*> getNet s
+
+instance KnownNet i hs o => B.Binary (Network i hs o) where
+    put = putNet
+    get = getNet sing
+
+instance (KnownNat i, KnownNat o) => B.Binary (OpaqueNet i o) where
+    put = \case OpaqueNet n -> do
+                  B.put (fromSing (hiddenSing n))
+                  putNet n
+    get = do
+      hs <- B.get
+      withSomeSing hs (fmap OpaqueNet . getNet)
+
+instance B.Binary SomeNet where
+    put = \case SomeNet (n :: Network i hs o) -> do
+                  B.put (natVal (Proxy @i))
+                  B.put (fromSing (hiddenSing n))
+                  B.put (natVal (Proxy @o))
+                  putNet n
+    get = do
+      i  <- B.get
+      hs <- B.get
+      o  <- B.get
+      reifyNat i        $ \(Proxy :: Proxy (i  :: Nat  )) ->
+        withSomeSing hs $ \(hs'   :: Sing  (hs :: [Nat])) ->
+        reifyNat o      $ \(Proxy :: Proxy (o  :: Nat  )) -> do
+          n <- getNet hs'
+          return $ SomeNet (n :: Network i hs o)
+          
+
+
+hiddenSing :: forall i hs o. Network i hs o -> Sing hs
+hiddenSing = \case NetOL _                   -> SNil
+                   NetIL (_ :: FLayer i h) n -> SNat @h `SCons` hiddenSing n
 
 pureNet
     :: forall i hs o. KnownNet i hs o
