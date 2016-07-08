@@ -220,3 +220,13 @@ randomONetMWC
     -> m (OpaqueNet i o)
 randomONetMWC hs r g = withSomeSing hs $ \hsS ->
                          OpaqueNet <$> randomNetMWCSing hsS r g
+
+runOpaqueNet
+    :: forall i o. (KnownNat i, KnownNat o)
+    => NeuralActs Double
+    -> OpaqueNet i o
+    -> R i
+    -> R o
+runOpaqueNet na oN x = case oN of
+                         OpaqueNet net -> runNetwork na net x
+{-# INLINE runOpaqueNet #-}
