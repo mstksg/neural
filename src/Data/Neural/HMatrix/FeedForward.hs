@@ -168,12 +168,18 @@ trainSample (NA f g) rate x0 target = fst . go x0
               dWs  = tr wN #> dEdy
           in  (NetIL w' n', dWs)
 
-opaqueNet
+traverseOpaqueNet
     :: Applicative f
     => (forall hs. Network i hs o -> f (Network i' hs o'))
     -> OpaqueNet i o
     -> f (OpaqueNet i' o')
-opaqueNet f = \case OpaqueNet net -> OpaqueNet <$> f net
+traverseOpaqueNet f = \case OpaqueNet net -> OpaqueNet <$> f net
+
+mapOpaqueNet
+    :: (forall hs. Network i hs o -> Network i' hs o')
+    -> OpaqueNet i o
+    -> OpaqueNet i' o'
+mapOpaqueNet f = \case OpaqueNet net -> OpaqueNet (f net)
 
 randomNet
     :: forall m i hs o. (MonadRandom m, KnownNet i hs o)
