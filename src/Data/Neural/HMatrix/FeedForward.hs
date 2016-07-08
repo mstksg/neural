@@ -23,7 +23,6 @@ import           Control.Monad.Random
 import           Data.MonoTraversable
 import           Data.Neural.HMatrix.FLayer
 import           Data.Neural.Types            (NeuralActs(..))
-import           Data.Reflection
 import           Data.Singletons
 import           Data.Singletons.Prelude
 import           Data.Singletons.TypeLits
@@ -87,12 +86,12 @@ instance B.Binary SomeNet where
       i  <- B.get
       hs <- B.get
       o  <- B.get
-      reifyNat i        $ \(Proxy :: Proxy (i  :: Nat  )) ->
-        withSomeSing hs $ \(hs'   :: Sing  (hs :: [Nat])) ->
-        reifyNat o      $ \(Proxy :: Proxy (o  :: Nat  )) -> do
+      withSomeSing i    $ \(SNat :: Sing (i  :: Nat  )) ->
+        withSomeSing hs $ \(hs'  :: Sing (hs :: [Nat])) ->
+        withSomeSing o  $ \(SNat :: Sing (o  :: Nat  )) -> do
           n <- getNet hs'
           return $ SomeNet (n :: Network i hs o)
-          
+
 
 
 hiddenSing :: forall i hs o. Network i hs o -> Sing hs
@@ -168,25 +167,39 @@ randomNet
     :: forall m i hs o. (MonadRandom m, KnownNet i hs o)
     => (Double, Double)
     -> m (Network i hs o)
-randomNet r = go sing
+randomNet = randomNetSing sing
+
+randomNetSing
+    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m)
+    => Sing hs
+    -> (Double, Double)
+    -> m (Network i hs o)
+randomNetSing s r = go s
   where
-    go :: forall j js. KnownNat j
-       => Sing js
-       -> m (Network j js o)
-    go nl = case nl of
-              SNil             -> NetOL <$> randomFLayer r
-              SNat `SCons` nl' -> NetIL <$> randomFLayer r <*> go nl'
+    go  :: forall j js. KnownNat j
+        => Sing js
+        -> m (Network j js o)
+    go = \case SNil            -> NetOL <$> randomFLayer r
+               SNat `SCons` s' -> NetIL <$> randomFLayer r <*> go s'
 
 randomNetMWC
     :: forall m i hs o. (PrimMonad m, KnownNet i hs o)
     => (Double, Double)
     -> Gen (PrimState m)
     -> m (Network i hs o)
-randomNetMWC r g = go sing
+randomNetMWC = randomNetMWCSing sing
+
+randomNetMWCSing
+    :: forall m i hs o. (PrimMonad m, KnownNat i, KnownNat o)
+    => Sing hs
+    -> (Double, Double)
+    -> Gen (PrimState m)
+    -> m (Network i hs o)
+randomNetMWCSing s r g = go s
   where
-    go :: forall j js. KnownNat j
-       => Sing js
-       -> m (Network j js o)
+    go  :: forall j js. KnownNat j
+        => Sing js
+        -> m (Network j js o)
     go nl = case nl of
               SNil             -> NetOL <$> randomFLayerMWC r g
               SNat `SCons` nl' -> NetIL <$> randomFLayerMWC r g <*> go nl'
