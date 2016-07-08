@@ -76,6 +76,9 @@ instance (KnownNat i, KnownNat o) => B.Binary (OpaqueNet i o) where
       hs <- B.get
       withSomeSing hs (fmap OpaqueNet . getNet)
 
+instance NFData (OpaqueNet i o) where
+    rnf = \case OpaqueNet (force -> !_) -> ()
+
 instance B.Binary SomeNet where
     put = \case SomeNet (n :: Network i hs o) -> do
                   B.put (natVal (Proxy @i))
@@ -92,6 +95,8 @@ instance B.Binary SomeNet where
           n <- getNet hs'
           return $ SomeNet (n :: Network i hs o)
 
+instance NFData SomeNet where
+    rnf = \case SomeNet (force -> !_) -> ()
 
 
 hiddenSing :: forall i hs o. Network i hs o -> Sing hs
