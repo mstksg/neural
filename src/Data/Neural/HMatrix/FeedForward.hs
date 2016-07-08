@@ -204,3 +204,19 @@ randomNetMWCSing s r g = go s
               SNil             -> NetOL <$> randomFLayerMWC r g
               SNat `SCons` nl' -> NetIL <$> randomFLayerMWC r g <*> go nl'
 
+randomONet
+    :: (KnownNat i, KnownNat o, MonadRandom m)
+    => [Integer]
+    -> (Double, Double)
+    -> m (OpaqueNet i o)
+randomONet hs r = withSomeSing hs $ \hsS ->
+                    OpaqueNet <$> randomNetSing hsS r
+
+randomONetMWC
+    :: (KnownNat i, KnownNat o, PrimMonad m)
+    => [Integer]
+    -> (Double, Double)
+    -> Gen (PrimState m)
+    -> m (OpaqueNet i o)
+randomONetMWC hs r g = withSomeSing hs $ \hsS ->
+                         OpaqueNet <$> randomNetMWCSing hsS r g
