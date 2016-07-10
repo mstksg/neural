@@ -15,8 +15,6 @@
 
 module Data.Neural.HMatrix.FeedForward where
 
--- import GHC.TypeLits
--- import GHC.TypeLits.List
 import           Control.DeepSeq
 import           Control.Monad.Primitive
 import           Control.Monad.Random
@@ -49,6 +47,50 @@ data OpaqueNet :: Nat -> Nat -> * where
 -- deriving instance KnownNet i hs o => Show (Network i hs o)
 -- deriving instance Show SomeNet
 -- deriving instance (KnownNat i, KnownNat o) => Show (OpaqueNet i o)
+
+zipNet
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    => (forall i' o'. (KnownNat i', KnownNat o') => FLayer i' o' -> FLayer i' o' -> FLayer i' o')
+    -> Network i hs o
+    -> Network i hs o
+    -> Network i hs o
+zipNet f = go
+  where
+    go  :: forall j js. KnownNat j
+        => Network j js o
+        -> Network j js o
+        -> Network j js o
+    go = \case
+      NetOL l1 -> \case
+        NetOL l2 -> NetOL (f l1 l2)
+      NetIL l1 n1 -> \case
+        NetIL l2 n2 -> NetIL (f l1 l2) (go n1 n2)
+{-# INLINE zipNet #-}
+
+mapNet
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    => (forall i' o'. (KnownNat i', KnownNat o') => FLayer i' o' -> FLayer i' o')
+    -> Network i hs o
+    -> Network i hs o
+mapNet f = go
+  where
+    go  :: forall j js. KnownNat j
+        => Network j js o
+        -> Network j js o
+    go = \case
+      NetOL l   -> NetOL (f l)
+      NetIL l n -> NetIL (f l) (go n)
+
+
+instance KnownNet i hs o => Num (Network i hs o) where
+    (+)           = zipNet (+)
+    (-)           = zipNet (-)
+    (*)           = zipNet (*)
+    negate        = mapNet negate
+    abs           = mapNet abs
+    signum        = mapNet signum
+    fromInteger x = pureNet (fromInteger x)
+
 
 type instance Element (Network i hs o) = Double
 

@@ -55,6 +55,7 @@ trainSeriesDO na doRate step stepS targ inps0 n0 =
           (ns0M, nu0M)     = toNetworkU n0M
           (dsM, nuShiftsM) = bptt na step targ inps0 ns0M nu0M
           (ns0, nu0)       = toNetworkU n0
+      -- TODO: wait, should this mask changes too
       in  trainStates stepS (nu0 - nuShiftsM) ns0 dsM
 {-# INLINE trainSeriesDO #-}
 
