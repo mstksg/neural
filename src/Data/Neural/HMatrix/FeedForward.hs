@@ -80,16 +80,24 @@ mapNet f = go
     go = \case
       NetOL l   -> NetOL (f l)
       NetIL l n -> NetIL (f l) (go n)
+{-# INLINE mapNet #-}
 
 
 instance KnownNet i hs o => Num (Network i hs o) where
     (+)           = zipNet (+)
+    {-# INLINE (+) #-}
     (-)           = zipNet (-)
+    {-# INLINE (-) #-}
     (*)           = zipNet (*)
+    {-# INLINE (*) #-}
     negate        = mapNet negate
+    {-# INLINE negate #-}
     abs           = mapNet abs
+    {-# INLINE abs #-}
     signum        = mapNet signum
+    {-# INLINE signum #-}
     fromInteger x = pureNet (fromInteger x)
+    {-# INLINE fromInteger #-}
 
 
 type instance Element (Network i hs o) = Double
@@ -155,6 +163,7 @@ pureNet l = go sing
     go nl = case nl of
               SNil             -> NetOL l
               SNat `SCons` nl' -> l `NetIL` go nl'
+{-# INLINE pureNet #-}
 
 runNetwork
     :: forall i hs o. (KnownNat i, KnownNat o)
@@ -209,6 +218,7 @@ trainSample (NA f g) rate x0 target = fst . go x0
               w'   = FLayer wB' wN'
               dWs  = tr wN #> dEdy
           in  (NetIL w' n', dWs)
+{-# INLINE trainSample #-}
 
 traverseOpaqueNet
     :: Applicative f
@@ -216,12 +226,14 @@ traverseOpaqueNet
     -> OpaqueNet i o
     -> f (OpaqueNet i' o')
 traverseOpaqueNet f = \case OpaqueNet net -> OpaqueNet <$> f net
+{-# INLINE traverseOpaqueNet #-}
 
 mapOpaqueNet
     :: (forall hs. Network i hs o -> Network i' hs o')
     -> OpaqueNet i o
     -> OpaqueNet i' o'
 mapOpaqueNet f = \case OpaqueNet net -> OpaqueNet (f net)
+{-# INLINE mapOpaqueNet #-}
 
 randomNet
     :: forall m i hs o. (MonadRandom m, KnownNet i hs o)

@@ -9,7 +9,8 @@
 module Data.Neural.HMatrix.FeedForward.Dropout where
 
 import           Control.Lens
-import           Control.Monad.Random
+import           Control.Monad.Primitive
+import           Control.Monad.Random hiding     (uniform)
 import           Data.Bool
 import           Data.Neural.HMatrix.FLayer
 import           Data.Neural.HMatrix.FeedForward
@@ -19,6 +20,7 @@ import           Data.Singletons.Prelude
 import           Data.Singletons.TypeLits
 import           Numeric.AD.Rank1.Forward
 import           Numeric.LinearAlgebra.Static
+import           System.Random.MWC
 
 data NetMask :: Nat -> [Nat] -> Nat -> * where
     MaskOL :: NetMask i '[] o
@@ -46,6 +48,26 @@ trainSampleDO na doRate step x0 target net0 =
           shift  = trainStep na step x0 target masked
       in  net0 - applyMask nm shift
 {-# INLINE trainSampleDO #-}
+
+trainSampleDOMWC
+    :: forall i hs o m. (KnownNat i, SingI hs, KnownNat o, MonadRandom m, PrimMonad m)
+    => NeuralActs (Forward Double)
+    -> Double           -- ^ dropout rate (how much to DROP)
+    -> Double           -- ^ learning rate
+    -> R i              -- ^ input vector
+    -> R o              -- ^ target vector
+    -> Network i hs o   -- ^ network to train
+    -> Gen (PrimState m)
+    -> m (Network i hs o)
+trainSampleDOMWC na doRate step x0 target net0 g =
+    genNetMaskMWC doRate g <&> \nm ->
+      let masked :: Network i hs o
+          masked = applyMask nm net0
+          shift  :: Network i hs o
+          shift  = trainStep na step x0 target masked
+      in  net0 - applyMask nm shift
+{-# INLINE trainSampleDOMWC #-}
+
 
 trainStep
     :: forall i hs o. (KnownNat i, KnownNat o)
@@ -82,6 +104,7 @@ trainStep (NA f g) rate x0 target = fst . go x0
             w'         = FLayer wB' wN'
             dWs        = tr wN #> dEdy
         in  (NetIL w' n', dWs)
+{-# INLINE trainStep #-}
 
 
 applyMask
@@ -115,6 +138,22 @@ genNetMask doRate = go sing
     randomMask = dvmap (bool 0 1 . (doRate <)) . flip randomVector Uniform
              <$> getRandom
 {-# INLINE genNetMask #-}
+
+genNetMaskMWC
+    :: forall i hs o m. (KnownNet i hs o, MonadRandom m, PrimMonad m)
+    => Double           -- ^ dropout rate (how much to DROP)
+    -> Gen (PrimState m)
+    -> m (NetMask i hs o)
+genNetMaskMWC doRate g = go sing
+  where
+    go :: forall j js. Sing js -> m (NetMask j js o)
+    go = \case SNil            -> return MaskOL
+               SNat `SCons` ss -> MaskIL <$> randomMask <*> go ss
+    randomMask :: forall n. KnownNat n => m (R n)
+    randomMask = dvmap (bool 0 1 . (doRate <)) . flip randomVector Uniform
+             <$> uniform g
+{-# INLINE genNetMaskMWC #-}
+
 
 
 compensateDO
