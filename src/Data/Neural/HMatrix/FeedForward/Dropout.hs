@@ -32,7 +32,7 @@ data NetMask :: Nat -> [Nat] -> Nat -> * where
 infixr 5 `MaskIL`
 
 trainSampleDO
-    :: forall i hs o m. (KnownNat i, SingI hs, KnownNat o, MonadRandom m)
+    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m)
     => NeuralActs (Forward Double)
     -> Double           -- ^ dropout rate (how much to DROP)
     -> Double           -- ^ learning rate
@@ -41,16 +41,16 @@ trainSampleDO
     -> Network i hs o   -- ^ network to train
     -> m (Network i hs o)
 trainSampleDO na doRate step x0 target net0 =
-    genNetMask doRate <&> \nm ->
+    genNetMaskWith doRate net0 <&> \nm ->
       let masked :: Network i hs o
           masked = applyMask nm net0
           shift  :: Network i hs o
           shift  = trainStep na step x0 target masked
-      in  net0 - applyMask nm shift
+      in  zipNet (-) net0 (applyMask nm shift)
 {-# INLINE trainSampleDO #-}
 
 trainSampleDOMWC
-    :: forall i hs o m. (KnownNat i, SingI hs, KnownNat o, MonadRandom m, PrimMonad m)
+    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m, PrimMonad m)
     => NeuralActs (Forward Double)
     -> Double           -- ^ dropout rate (how much to DROP)
     -> Double           -- ^ learning rate
@@ -60,12 +60,12 @@ trainSampleDOMWC
     -> Gen (PrimState m)
     -> m (Network i hs o)
 trainSampleDOMWC na doRate step x0 target net0 g =
-    genNetMaskMWC doRate g <&> \nm ->
+    genNetMaskWithMWC doRate net0 g <&> \nm ->
       let masked :: Network i hs o
           masked = applyMask nm net0
           shift  :: Network i hs o
           shift  = trainStep na step x0 target masked
-      in  net0 - applyMask nm shift
+      in  zipNet (-) net0 (applyMask nm shift)
 {-# INLINE trainSampleDOMWC #-}
 
 
@@ -126,21 +126,43 @@ applyMask =
 {-# INLINE applyMask #-}
 
 genNetMask
-    :: forall i hs o m. (KnownNet i hs o, MonadRandom m)
+    :: forall i hs o m. (SingI hs, MonadRandom m)
     => Double           -- ^ dropout rate (how much to DROP)
     -> m (NetMask i hs o)
 genNetMask doRate = go sing
   where
     go :: forall j js. Sing js -> m (NetMask j js o)
     go = \case SNil            -> return MaskOL
-               SNat `SCons` ss -> MaskIL <$> randomMask <*> go ss
-    randomMask :: forall n. KnownNat n => m (R n)
-    randomMask = dvmap (bool 0 1 . (doRate <)) . flip randomVector Uniform
-             <$> getRandom
+               SNat `SCons` ss -> MaskIL <$> randomMask' <*> go ss
+    randomMask' :: forall n. KnownNat n => m (R n)
+    randomMask' = randomMask doRate
 {-# INLINE genNetMask #-}
 
+genNetMaskWith
+    :: forall i hs o m. MonadRandom m
+    => Double           -- ^ dropout rate (how much to DROP)
+    -> Network i hs o
+    -> m (NetMask i hs o)
+genNetMaskWith doRate = go
+  where
+    go :: forall j js. Network j js o -> m (NetMask j js o)
+    go = \case NetOL _    -> return MaskOL
+               NetIL _ ss -> MaskIL <$> randomMask' <*> go ss
+    randomMask' :: forall n. KnownNat n => m (R n)
+    randomMask' = randomMask doRate
+{-# INLINE genNetMaskWith #-}
+
+randomMask
+    :: forall n m. (KnownNat n, MonadRandom m)
+    => Double       -- ^ dropout (% to remove)
+    -> m (R n)
+randomMask doRate = dvmap (bool 0 1 . (doRate <))
+                  . flip randomVector Uniform
+                <$> getRandom
+{-# INLINE randomMask #-}
+
 genNetMaskMWC
-    :: forall i hs o m. (KnownNet i hs o, MonadRandom m, PrimMonad m)
+    :: forall i hs o m. (SingI hs, PrimMonad m)
     => Double           -- ^ dropout rate (how much to DROP)
     -> Gen (PrimState m)
     -> m (NetMask i hs o)
@@ -148,11 +170,35 @@ genNetMaskMWC doRate g = go sing
   where
     go :: forall j js. Sing js -> m (NetMask j js o)
     go = \case SNil            -> return MaskOL
-               SNat `SCons` ss -> MaskIL <$> randomMask <*> go ss
-    randomMask :: forall n. KnownNat n => m (R n)
-    randomMask = dvmap (bool 0 1 . (doRate <)) . flip randomVector Uniform
-             <$> uniform g
+               SNat `SCons` ss -> MaskIL <$> randomMask' <*> go ss
+    randomMask' :: forall n. KnownNat n => m (R n)
+    randomMask' = randomMaskMWC doRate g
 {-# INLINE genNetMaskMWC #-}
+
+genNetMaskWithMWC
+    :: forall i hs o m. PrimMonad m
+    => Double           -- ^ dropout rate (how much to DROP)
+    -> Network i hs o
+    -> Gen (PrimState m)
+    -> m (NetMask i hs o)
+genNetMaskWithMWC doRate n g = go n
+  where
+    go :: forall j js. Network j js o -> m (NetMask j js o)
+    go = \case NetOL _    -> return MaskOL
+               NetIL _ ss -> MaskIL <$> randomMask' <*> go ss
+    randomMask' :: forall n. KnownNat n => m (R n)
+    randomMask' = randomMaskMWC doRate g
+{-# INLINE genNetMaskWithMWC #-}
+
+randomMaskMWC
+    :: forall n m. (KnownNat n, PrimMonad m)
+    => Double       -- ^ dropout (% to remove)
+    -> Gen (PrimState m)
+    -> m (R n)
+randomMaskMWC doRate g = dvmap (bool 0 1 . (doRate <))
+                       . flip randomVector Uniform
+                     <$> uniform g
+{-# INLINE randomMaskMWC #-}
 
 
 

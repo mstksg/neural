@@ -29,8 +29,6 @@ import           Numeric.LinearAlgebra.Static
 import           System.Random.MWC
 import qualified Data.Binary                  as B
 
-type KnownNet i hs o = (KnownNat i, SingI hs, KnownNat o)
-
 data Network :: Nat -> [Nat] -> Nat -> * where
     NetOL :: !(FLayer i o) -> Network i '[] o
     NetIL :: KnownNat j
@@ -83,7 +81,7 @@ mapNet f = go
 {-# INLINE mapNet #-}
 
 
-instance KnownNet i hs o => Num (Network i hs o) where
+instance (KnownNat i, KnownNat o, SingI hs) => Num (Network i hs o) where
     (+)           = zipNet (+)
     {-# INLINE (+) #-}
     (-)           = zipNet (-)
@@ -114,7 +112,7 @@ getNet :: (KnownNat i, KnownNat o) => Sing hs -> B.Get (Network i hs o)
 getNet = \case SNil           -> NetOL <$> B.get
                SNat `SCons` s -> NetIL <$> B.get <*> getNet s
 
-instance KnownNet i hs o => B.Binary (Network i hs o) where
+instance (KnownNat i, SingI hs, KnownNat o) => B.Binary (Network i hs o) where
     put = putNet
     get = getNet sing
 
@@ -154,7 +152,7 @@ hiddenSing = \case NetOL _                   -> SNil
                    NetIL (_ :: FLayer i h) n -> SNat @h `SCons` hiddenSing n
 
 pureNet
-    :: forall i hs o. KnownNet i hs o
+    :: forall i hs o. (KnownNat i, KnownNat o, SingI hs)
     => (forall j k. (KnownNat j, KnownNat k) => FLayer j k)
     -> Network i hs o
 pureNet l = go sing
@@ -236,7 +234,7 @@ mapOpaqueNet f = \case OpaqueNet net -> OpaqueNet (f net)
 {-# INLINE mapOpaqueNet #-}
 
 randomNet
-    :: forall m i hs o. (MonadRandom m, KnownNet i hs o)
+    :: forall m i hs o. (MonadRandom m, KnownNat i, KnownNat o, SingI hs)
     => (Double, Double)
     -> m (Network i hs o)
 randomNet = randomNetSing sing
@@ -255,7 +253,7 @@ randomNetSing s r = go s
                SNat `SCons` s' -> NetIL <$> randomFLayer r <*> go s'
 
 randomNetMWC
-    :: forall m i hs o. (PrimMonad m, KnownNet i hs o)
+    :: forall m i hs o. (PrimMonad m, KnownNat i, KnownNat o, SingI hs)
     => (Double, Double)
     -> Gen (PrimState m)
     -> m (Network i hs o)
