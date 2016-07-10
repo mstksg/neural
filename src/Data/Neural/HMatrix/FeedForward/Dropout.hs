@@ -203,13 +203,11 @@ randomMaskMWC doRate g = dvmap (bool 0 1 . (doRate <))
 
 
 compensateDO
-    :: forall i hs o. KnownNat o
+    :: forall i hs o. (KnownNat i, KnownNat o)
     => Double       -- ^ how much was DROPPED
     -> Network i hs o
     -> Network i hs o
-compensateDO d = \case
-    NetOL w   -> NetOL w
-    NetIL w n -> NetIL w (go n)
+compensateDO d = go
   where
     go :: forall j js. KnownNat j => Network j js o -> Network j js o
     go = \case
