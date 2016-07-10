@@ -131,6 +131,7 @@ genNetMaskMWC doRate g = go natsList
              <$> uniform g
 {-# INLINE genNetMaskMWC #-}
 
+-- TODO: is this seriously wrong or what
 compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
 compensateDO d n =
     case n of
