@@ -1,54 +1,158 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE ConstraintKinds     #-}</span><span>
-</span><a name="line-2"></a><span class="hs-pragma">{-# LANGUAGE DataKinds           #-}</span><span>
-</span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE BangPatterns        #-}</span><span>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE BangPatterns        #-}</span><span>
+</span><a name="line-2"></a><span class="hs-pragma">{-# LANGUAGE ConstraintKinds     #-}</span><span>
+</span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE DataKinds           #-}</span><span>
 </span><a name="line-4"></a><span class="hs-pragma">{-# LANGUAGE GADTs               #-}</span><span>
 </span><a name="line-5"></a><span class="hs-pragma">{-# LANGUAGE KindSignatures      #-}</span><span>
-</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE PolyKinds           #-}</span><span>
-</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE RankNTypes          #-}</span><span>
-</span><a name="line-8"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
-</span><a name="line-9"></a><span class="hs-pragma">{-# LANGUAGE StandaloneDeriving  #-}</span><span>
-</span><a name="line-10"></a><span class="hs-pragma">{-# LANGUAGE TypeFamilies        #-}</span><span>
-</span><a name="line-11"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators       #-}</span><span>
-</span><a name="line-12"></a><span>
-</span><a name="line-13"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span><span> </span><span class="hs-keyword">where</span><span>
-</span><a name="line-14"></a><span>
-</span><a name="line-15"></a><span class="hs-comment">-- import GHC.TypeLits</span><span>
-</span><a name="line-16"></a><span class="hs-comment">-- import GHC.TypeLits.List</span><span>
-</span><a name="line-17"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Primitive</span><span>
-</span><a name="line-18"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span>
-</span><a name="line-19"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">MonoTraversable</span><span>
-</span><a name="line-20"></a><span class="hs-keyword">import</span><span> </span><a href="Data.Neural.HMatrix.FLayer.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FLayer</span></a><span>
-</span><a name="line-21"></a><span class="hs-keyword">import</span><span> </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>            </span><span class="hs-special">(</span><a href="Data.Neural.Activation.html#NeuralActs"><span class="hs-identifier hs-type">NeuralActs</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
-</span><a name="line-22"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span>
-</span><a name="line-23"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">Prelude</span><span>
-</span><a name="line-24"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
-</span><a name="line-25"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">AD</span><span class="hs-operator">.</span><span class="hs-identifier">Rank1</span><span class="hs-operator">.</span><span class="hs-identifier">Forward</span><span>
-</span><a name="line-26"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">LinearAlgebra</span><span class="hs-operator">.</span><span class="hs-identifier">Static</span><span>
-</span><a name="line-27"></a><span class="hs-keyword">import</span><span> </span><span class="hs-identifier">System</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span class="hs-operator">.</span><span class="hs-identifier">MWC</span><span>
-</span><a name="line-28"></a><span>
-</span><a name="line-29"></a><span class="hs-keyword">type</span><span> </span><a name="KnownNet"><a href="Data.Neural.HMatrix.FeedForward.html#KnownNet"><span class="hs-identifier">KnownNet</span></a></a><span> </span><a name="local-1627578841"><a href="#local-1627578841"><span class="hs-identifier">i</span></a></a><span> </span><a name="local-1627578842"><a href="#local-1627578842"><span class="hs-identifier">hs</span></a></a><span> </span><a name="local-1627578843"><a href="#local-1627578843"><span class="hs-identifier">o</span></a></a><span> </span><span class="hs-glyph">=</span><span> </span><span class="hs-special">(</span><span class="hs-identifier hs-type">KnownNat</span><span> </span><a href="#local-1627578841"><span class="hs-identifier hs-type">i</span></a><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">SingI</span><span> </span><a href="#local-1627578842"><span class="hs-identifier hs-type">hs</span></a><span class="hs-special">,</span><span> </span><span class="hs-identifier hs-type">KnownNat</span><span> </span><a href="#local-1627578843"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span>
-</span><a name="line-30"></a><span>
-</span><a name="line-31"></a><span class="hs-keyword">data</span><span> </span><a name="Network"><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier">Network</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
-</span><a name="line-32"></a><span>    </span><a name="NetOL"><a href="Data.Neural.HMatrix.FeedForward.html#NetOL"><span class="hs-identifier">NetOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><a href="Data.Neural.HMatrix.FLayer.html#FLayer"><span class="hs-identifier hs-type">FLayer</span></a><span> </span><a href="#local-1627578835"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627578836"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier hs-type">Network</span></a><span> </span><a href="#local-1627578835"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
+</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE LambdaCase          #-}</span><span>
+</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE PolyKinds           #-}</span><span>
+</span><a name="line-8"></a><span class="hs-pragma">{-# LANGUAGE RankNTypes          #-}</span><span>
+</span><a name="line-9"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><a name="line-10"></a><span class="hs-pragma">{-# LANGUAGE StandaloneDeriving  #-}</span><span>
+</span><a name="line-11"></a><span class="hs-pragma">{-# LANGUAGE TypeApplications    #-}</span><span>
+</span><a name="line-12"></a><span class="hs-pragma">{-# LANGUAGE TypeFamilies        #-}</span><span>
+</span><a name="line-13"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators       #-}</span><span>
+</span><a name="line-14"></a><span class="hs-pragma">{-# LANGUAGE ViewPatterns        #-}</span><span>
+</span><a name="line-15"></a><span>
+</span><a name="line-16"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-17"></a><span>
+</span><a name="line-18"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">DeepSeq</span><span>
+</span><a name="line-19"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Primitive</span><span>
+</span><a name="line-20"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span>
+</span><a name="line-21"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">MonoTraversable</span><span>
+</span><a name="line-22"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FLayer.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FLayer</span></a><span>
+</span><a name="line-23"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>            </span><span class="hs-special">(</span><a href="Data.Neural.Activation.html#NeuralActs"><span class="hs-identifier hs-type">NeuralActs</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><a name="line-24"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span>
+</span><a name="line-25"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">Prelude</span><span>
+</span><a name="line-26"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
+</span><a name="line-27"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">AD</span><span class="hs-operator">.</span><span class="hs-identifier">Rank1</span><span class="hs-operator">.</span><span class="hs-identifier">Forward</span><span>
+</span><a name="line-28"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">LinearAlgebra</span><span class="hs-operator">.</span><span class="hs-identifier">Static</span><span>
+</span><a name="line-29"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">System</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span class="hs-operator">.</span><span class="hs-identifier">MWC</span><span>
+</span><a name="line-30"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Binary</span><span>                  </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">B</span><span>
+</span><a name="line-31"></a><span>
+</span><a name="line-32"></a><span class="hs-keyword">data</span><span> </span><a name="Network"><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier">Network</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-33"></a><span>    </span><a name="NetOL"><a href="Data.Neural.HMatrix.FeedForward.html#NetOL"><span class="hs-identifier">NetOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><a href="Data.Neural.HMatrix.FLayer.html#FLayer"><span class="hs-identifier hs-type">FLayer</span></a><span> </span><a href="#local-1627578849"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627578850"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier hs-type">Network</span></a><span> </span><a href="#local-1627578849"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
     NetIL :: KnownNat j
           =&gt; !(FLayer i j) -&gt; !(Network j hs o) -&gt; Network i (j ': hs) o
 
 infixr 5 `NetIL`
 
 data SomeNet :: * where
-    SomeNet :: KnownNet i hs o =&gt; Network i hs o -&gt; SomeNet
+    SomeNet :: (KnownNat i, KnownNat o) =&gt; Network i hs o -&gt; SomeNet
 
 data OpaqueNet :: Nat -&gt; Nat -&gt; * where
-    OpaqueNet :: SingI hs =&gt; Network i hs o -&gt; OpaqueNet i o
+    OpaqueNet :: Network i hs o -&gt; OpaqueNet i o
 
 -- deriving instance KnownNet i hs o =&gt; Show (Network i hs o)
 -- deriving instance Show SomeNet
 -- deriving instance (KnownNat i, KnownNat o) =&gt; Show (OpaqueNet i o)
 
+zipNet
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    =&gt; (forall i' o'. (KnownNat i', KnownNat o') =&gt; FLayer i' o' -&gt; FLayer i' o' -&gt; FLayer i' o')
+    -&gt; Network i hs o
+    -&gt; Network i hs o
+    -&gt; Network i hs o
+zipNet f = go
+  where
+    go  :: forall j js. KnownNat j
+        =&gt; Network j js o
+        -&gt; Network j js o
+        -&gt; Network j js o
+    go = \case
+      NetOL l1 -&gt; \case
+        NetOL l2 -&gt; NetOL (f l1 l2)
+      NetIL l1 n1 -&gt; \case
+        NetIL l2 n2 -&gt; NetIL (f l1 l2) (go n1 n2)
+{-# INLINE zipNet #-}
+
+mapNet
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    =&gt; (forall i' o'. (KnownNat i', KnownNat o') =&gt; FLayer i' o' -&gt; FLayer i' o')
+    -&gt; Network i hs o
+    -&gt; Network i hs o
+mapNet f = go
+  where
+    go  :: forall j js. KnownNat j
+        =&gt; Network j js o
+        -&gt; Network j js o
+    go = \case
+      NetOL l   -&gt; NetOL (f l)
+      NetIL l n -&gt; NetIL (f l) (go n)
+{-# INLINE mapNet #-}
+
+
+instance (KnownNat i, KnownNat o, SingI hs) =&gt; Num (Network i hs o) where
+    (+)           = zipNet (+)
+    {-# INLINE (+) #-}
+    (-)           = zipNet (-)
+    {-# INLINE (-) #-}
+    (*)           = zipNet (*)
+    {-# INLINE (*) #-}
+    negate        = mapNet negate
+    {-# INLINE negate #-}
+    abs           = mapNet abs
+    {-# INLINE abs #-}
+    signum        = mapNet signum
+    {-# INLINE signum #-}
+    fromInteger x = pureNet (fromInteger x)
+    {-# INLINE fromInteger #-}
+
+
 type instance Element (Network i hs o) = Double
 
+instance NFData (Network i hs o) where
+    rnf (NetOL (force -&gt; !_)) = ()
+    rnf (NetIL (force -&gt; !_) (force -&gt; !_)) = ()
+
+putNet :: (KnownNat i, KnownNat o) =&gt; Network i hs o -&gt; B.Put
+putNet = \case NetOL w   -&gt; B.put w
+               NetIL w n -&gt; B.put w *&gt; putNet n
+
+getNet :: (KnownNat i, KnownNat o) =&gt; Sing hs -&gt; B.Get (Network i hs o)
+getNet = \case SNil           -&gt; NetOL &lt;$&gt; B.get
+               SNat `SCons` s -&gt; NetIL &lt;$&gt; B.get &lt;*&gt; getNet s
+
+instance (KnownNat i, SingI hs, KnownNat o) =&gt; B.Binary (Network i hs o) where
+    put = putNet
+    get = getNet sing
+
+instance (KnownNat i, KnownNat o) =&gt; B.Binary (OpaqueNet i o) where
+    put = \case OpaqueNet n -&gt; do
+                  B.put (fromSing (hiddenSing n))
+                  putNet n
+    get = do
+      hs &lt;- B.get
+      withSomeSing hs (fmap OpaqueNet . getNet)
+
+instance NFData (OpaqueNet i o) where
+    rnf = \case OpaqueNet (force -&gt; !_) -&gt; ()
+
+instance B.Binary SomeNet where
+    put = \case SomeNet (n :: Network i hs o) -&gt; do
+                  B.put (natVal (Proxy @i))
+                  B.put (fromSing (hiddenSing n))
+                  B.put (natVal (Proxy @o))
+                  putNet n
+    get = do
+      i  &lt;- B.get
+      hs &lt;- B.get
+      o  &lt;- B.get
+      withSomeSing i    $ \(SNat :: Sing (i  :: Nat  )) -&gt;
+        withSomeSing hs $ \(hs'  :: Sing (hs :: [Nat])) -&gt;
+        withSomeSing o  $ \(SNat :: Sing (o  :: Nat  )) -&gt; do
+          n &lt;- getNet hs'
+          return $ SomeNet (n :: Network i hs o)
+
+instance NFData SomeNet where
+    rnf = \case SomeNet (force -&gt; !_) -&gt; ()
+
+
+hiddenSing :: forall i hs o. Network i hs o -&gt; Sing hs
+hiddenSing = \case NetOL _                   -&gt; SNil
+                   NetIL (_ :: FLayer i h) n -&gt; SNat @h `SCons` hiddenSing n
+
 pureNet
-    :: forall i hs o. KnownNet i hs o
+    :: forall i hs o. (KnownNat i, KnownNat o, SingI hs)
     =&gt; (forall j k. (KnownNat j, KnownNat k) =&gt; FLayer j k)
     -&gt; Network i hs o
 pureNet l = go sing
@@ -57,6 +161,7 @@ pureNet l = go sing
     go nl = case nl of
               SNil             -&gt; NetOL l
               SNat `SCons` nl' -&gt; l `NetIL` go nl'
+{-# INLINE pureNet #-}
 
 runNetwork
     :: forall i hs o. (KnownNat i, KnownNat o)
@@ -111,32 +216,88 @@ trainSample (NA f g) rate x0 target = fst . go x0
               w'   = FLayer wB' wN'
               dWs  = tr wN #&gt; dEdy
           in  (NetIL w' n', dWs)
+{-# INLINE trainSample #-}
+
+traverseOpaqueNet
+    :: Applicative f
+    =&gt; (forall hs. Network i hs o -&gt; f (Network i' hs o'))
+    -&gt; OpaqueNet i o
+    -&gt; f (OpaqueNet i' o')
+traverseOpaqueNet f = \case OpaqueNet net -&gt; OpaqueNet &lt;$&gt; f net
+{-# INLINE traverseOpaqueNet #-}
+
+mapOpaqueNet
+    :: (forall hs. Network i hs o -&gt; Network i' hs o')
+    -&gt; OpaqueNet i o
+    -&gt; OpaqueNet i' o'
+mapOpaqueNet f = \case OpaqueNet net -&gt; OpaqueNet (f net)
+{-# INLINE mapOpaqueNet #-}
 
 randomNet
-    :: forall m i hs o. (MonadRandom m, KnownNet i hs o)
+    :: forall m i hs o. (MonadRandom m, KnownNat i, KnownNat o, SingI hs)
     =&gt; (Double, Double)
     -&gt; m (Network i hs o)
-randomNet r = go sing
+randomNet = randomNetSing sing
+
+randomNetSing
+    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m)
+    =&gt; Sing hs
+    -&gt; (Double, Double)
+    -&gt; m (Network i hs o)
+randomNetSing s r = go s
   where
-    go :: forall j js. KnownNat j
-       =&gt; Sing js
-       -&gt; m (Network j js o)
-    go nl = case nl of
-              SNil             -&gt; NetOL &lt;$&gt; randomFLayer r
-              SNat `SCons` nl' -&gt; NetIL &lt;$&gt; randomFLayer r &lt;*&gt; go nl'
+    go  :: forall j js. KnownNat j
+        =&gt; Sing js
+        -&gt; m (Network j js o)
+    go = \case SNil            -&gt; NetOL &lt;$&gt; randomFLayer r
+               SNat `SCons` s' -&gt; NetIL &lt;$&gt; randomFLayer r &lt;*&gt; go s'
 
 randomNetMWC
-    :: forall m i hs o. (PrimMonad m, KnownNet i hs o)
+    :: forall m i hs o. (PrimMonad m, KnownNat i, KnownNat o, SingI hs)
     =&gt; (Double, Double)
     -&gt; Gen (PrimState m)
     -&gt; m (Network i hs o)
-randomNetMWC r g = go sing
+randomNetMWC = randomNetMWCSing sing
+
+randomNetMWCSing
+    :: forall m i hs o. (PrimMonad m, KnownNat i, KnownNat o)
+    =&gt; Sing hs
+    -&gt; (Double, Double)
+    -&gt; Gen (PrimState m)
+    -&gt; m (Network i hs o)
+randomNetMWCSing s r g = go s
   where
-    go :: forall j js. KnownNat j
-       =&gt; Sing js
-       -&gt; m (Network j js o)
+    go  :: forall j js. KnownNat j
+        =&gt; Sing js
+        -&gt; m (Network j js o)
     go nl = case nl of
               SNil             -&gt; NetOL &lt;$&gt; randomFLayerMWC r g
               SNat `SCons` nl' -&gt; NetIL &lt;$&gt; randomFLayerMWC r g &lt;*&gt; go nl'
 
+randomONet
+    :: (KnownNat i, KnownNat o, MonadRandom m)
+    =&gt; [Integer]
+    -&gt; (Double, Double)
+    -&gt; m (OpaqueNet i o)
+randomONet hs r = withSomeSing hs $ \hsS -&gt;
+                    OpaqueNet &lt;$&gt; randomNetSing hsS r
+
+randomONetMWC
+    :: (KnownNat i, KnownNat o, PrimMonad m)
+    =&gt; [Integer]
+    -&gt; (Double, Double)
+    -&gt; Gen (PrimState m)
+    -&gt; m (OpaqueNet i o)
+randomONetMWC hs r g = withSomeSing hs $ \hsS -&gt;
+                         OpaqueNet &lt;$&gt; randomNetMWCSing hsS r g
+
+runOpaqueNet
+    :: forall i o. (KnownNat i, KnownNat o)
+    =&gt; NeuralActs Double
+    -&gt; OpaqueNet i o
+    -&gt; R i
+    -&gt; R o
+runOpaqueNet na oN x = case oN of
+                         OpaqueNet net -&gt; runNetwork na net x
+{-# INLINE runOpaqueNet #-}
 </span></pre></body></html>

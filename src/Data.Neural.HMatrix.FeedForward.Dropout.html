@@ -1,0 +1,221 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><link rel="stylesheet" type="text/css" href="style.css" /><script type="text/javascript" src="highlight.js"></script></head><body><pre><span class="hs-pragma">{-# LANGUAGE BangPatterns        #-}</span><span>
+</span><a name="line-2"></a><span class="hs-pragma">{-# LANGUAGE DataKinds           #-}</span><span>
+</span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE GADTs               #-}</span><span>
+</span><a name="line-4"></a><span class="hs-pragma">{-# LANGUAGE KindSignatures      #-}</span><span>
+</span><a name="line-5"></a><span class="hs-pragma">{-# LANGUAGE LambdaCase          #-}</span><span>
+</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators       #-}</span><span>
+</span><a name="line-8"></a><span>
+</span><a name="line-9"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span><span class="hs-operator">.</span><span class="hs-identifier">Dropout</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-10"></a><span>
+</span><a name="line-11"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Lens</span><span>
+</span><a name="line-12"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Primitive</span><span>
+</span><a name="line-13"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span> </span><span class="hs-keyword">hiding</span><span>     </span><span class="hs-special">(</span><span class="hs-identifier hs-var">uniform</span><span class="hs-special">)</span><span>
+</span><a name="line-14"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Bool</span><span>
+</span><a name="line-15"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FLayer.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FLayer</span></a><span>
+</span><a name="line-16"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FeedForward.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span></a><span>
+</span><a name="line-17"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>               </span><span class="hs-special">(</span><a href="Data.Neural.Activation.html#NeuralActs"><span class="hs-identifier hs-type">NeuralActs</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><a name="line-18"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span>
+</span><a name="line-19"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">Prelude</span><span>
+</span><a name="line-20"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
+</span><a name="line-21"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">AD</span><span class="hs-operator">.</span><span class="hs-identifier">Rank1</span><span class="hs-operator">.</span><span class="hs-identifier">Forward</span><span>
+</span><a name="line-22"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">LinearAlgebra</span><span class="hs-operator">.</span><span class="hs-identifier">Static</span><span>
+</span><a name="line-23"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">System</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span class="hs-operator">.</span><span class="hs-identifier">MWC</span><span>
+</span><a name="line-24"></a><span>
+</span><a name="line-25"></a><span class="hs-keyword">data</span><span> </span><a name="NetMask"><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#NetMask"><span class="hs-identifier">NetMask</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-26"></a><span>    </span><a name="MaskOL"><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#MaskOL"><span class="hs-identifier">MaskOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#NetMask"><span class="hs-identifier hs-type">NetMask</span></a><span> </span><a href="#local-1627581500"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
+    MaskIL :: KnownNat j
+           =&gt; !(R j)
+           -&gt; !(NetMask j js o)
+           -&gt; NetMask i (j ': js) o
+
+infixr 5 `MaskIL`
+
+trainSampleDO
+    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m)
+    =&gt; NeuralActs (Forward Double)
+    -&gt; Double           -- ^ dropout rate (how much to DROP)
+    -&gt; Double           -- ^ learning rate
+    -&gt; R i              -- ^ input vector
+    -&gt; R o              -- ^ target vector
+    -&gt; Network i hs o   -- ^ network to train
+    -&gt; m (Network i hs o)
+trainSampleDO na doRate step x0 target net0 =
+    genNetMaskWith doRate net0 &lt;&amp;&gt; \nm -&gt;
+      let masked :: Network i hs o
+          masked = applyMask nm net0
+          shift  :: Network i hs o
+          shift  = trainStep na step x0 target masked
+      in  zipNet (-) net0 (applyMask nm shift)
+{-# INLINE trainSampleDO #-}
+
+trainSampleDOMWC
+    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m, PrimMonad m)
+    =&gt; NeuralActs (Forward Double)
+    -&gt; Double           -- ^ dropout rate (how much to DROP)
+    -&gt; Double           -- ^ learning rate
+    -&gt; R i              -- ^ input vector
+    -&gt; R o              -- ^ target vector
+    -&gt; Network i hs o   -- ^ network to train
+    -&gt; Gen (PrimState m)
+    -&gt; m (Network i hs o)
+trainSampleDOMWC na doRate step x0 target net0 g =
+    genNetMaskWithMWC doRate net0 g &lt;&amp;&gt; \nm -&gt;
+      let masked :: Network i hs o
+          masked = applyMask nm net0
+          shift  :: Network i hs o
+          shift  = trainStep na step x0 target masked
+      in  zipNet (-) net0 (applyMask nm shift)
+{-# INLINE trainSampleDOMWC #-}
+
+
+trainStep
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    =&gt; NeuralActs (Forward Double)
+    -&gt; Double           -- ^ learning rate
+    -&gt; R i              -- ^ input vector
+    -&gt; R o              -- ^ target vector
+    -&gt; Network i hs o   -- ^ network to train
+    -&gt; Network i hs o
+trainStep (NA f g) rate x0 target = fst . go x0
+  where
+    NA f_ g_ = NA (fst . diff' f) (fst . diff' g)
+    go  :: forall j js. KnownNat j
+        =&gt; R j              -- ^ input vector
+        -&gt; Network j js o   -- ^ network to train
+        -&gt; (Network j js o, R j)
+    go !x = \case
+      NetOL w@(FLayer _ wN) -&gt;
+        let y    = runFLayer w x
+            o    = dvmap g_ y
+            dEdy = dvmap (diff g) y * (o - target)
+            wB'  = konst rate * dEdy
+            wN'  = konst rate * (dEdy `outer` x)
+            w'   = FLayer wB' wN'
+            dWs  = tr wN #&gt; dEdy
+        in  (NetOL w', dWs)
+      NetIL w@(FLayer _ wN) n -&gt;
+        let y          = runFLayer w x
+            o          = dvmap f_ y
+            (n', dWs') = go o n
+            dEdy       = dvmap (diff f) y * dWs'
+            wB'        = konst rate * dEdy
+            wN'        = konst rate * (dEdy `outer` x)
+            w'         = FLayer wB' wN'
+            dWs        = tr wN #&gt; dEdy
+        in  (NetIL w' n', dWs)
+{-# INLINE trainStep #-}
+
+
+applyMask
+    :: (KnownNat i, KnownNat o)
+    =&gt; NetMask i hs o
+    -&gt; Network i hs o
+    -&gt; Network i hs o
+applyMask =
+    \case MaskOL      -&gt; id
+          MaskIL m nm -&gt;
+            \case NetIL (FLayer b w) n -&gt;
+                    let mM = diag m
+                        n' = case applyMask nm n of
+                               NetOL (FLayer b' w')     -&gt;
+                                 NetOL (FLayer b' (w' &lt;&gt; mM))
+                               NetIL (FLayer b' w') n'' -&gt;
+                                 NetIL (FLayer b' (w' &lt;&gt; mM)) n''
+                    in  NetIL (FLayer (m * b) (mM &lt;&gt; w)) n'
+{-# INLINE applyMask #-}
+
+genNetMask
+    :: forall i hs o m. (SingI hs, MonadRandom m)
+    =&gt; Double           -- ^ dropout rate (how much to DROP)
+    -&gt; m (NetMask i hs o)
+genNetMask doRate = go sing
+  where
+    go :: forall j js. Sing js -&gt; m (NetMask j js o)
+    go = \case SNil            -&gt; return MaskOL
+               SNat `SCons` ss -&gt; MaskIL &lt;$&gt; randomMask' &lt;*&gt; go ss
+    randomMask' :: forall n. KnownNat n =&gt; m (R n)
+    randomMask' = randomMask doRate
+{-# INLINE genNetMask #-}
+
+genNetMaskWith
+    :: forall i hs o m. MonadRandom m
+    =&gt; Double           -- ^ dropout rate (how much to DROP)
+    -&gt; Network i hs o
+    -&gt; m (NetMask i hs o)
+genNetMaskWith doRate = go
+  where
+    go :: forall j js. Network j js o -&gt; m (NetMask j js o)
+    go = \case NetOL _    -&gt; return MaskOL
+               NetIL _ ss -&gt; MaskIL &lt;$&gt; randomMask' &lt;*&gt; go ss
+    randomMask' :: forall n. KnownNat n =&gt; m (R n)
+    randomMask' = randomMask doRate
+{-# INLINE genNetMaskWith #-}
+
+randomMask
+    :: forall n m. (KnownNat n, MonadRandom m)
+    =&gt; Double       -- ^ dropout (% to remove)
+    -&gt; m (R n)
+randomMask doRate = dvmap (bool 0 1 . (doRate &lt;))
+                  . flip randomVector Uniform
+                &lt;$&gt; getRandom
+{-# INLINE randomMask #-}
+
+genNetMaskMWC
+    :: forall i hs o m. (SingI hs, PrimMonad m)
+    =&gt; Double           -- ^ dropout rate (how much to DROP)
+    -&gt; Gen (PrimState m)
+    -&gt; m (NetMask i hs o)
+genNetMaskMWC doRate g = go sing
+  where
+    go :: forall j js. Sing js -&gt; m (NetMask j js o)
+    go = \case SNil            -&gt; return MaskOL
+               SNat `SCons` ss -&gt; MaskIL &lt;$&gt; randomMask' &lt;*&gt; go ss
+    randomMask' :: forall n. KnownNat n =&gt; m (R n)
+    randomMask' = randomMaskMWC doRate g
+{-# INLINE genNetMaskMWC #-}
+
+genNetMaskWithMWC
+    :: forall i hs o m. PrimMonad m
+    =&gt; Double           -- ^ dropout rate (how much to DROP)
+    -&gt; Network i hs o
+    -&gt; Gen (PrimState m)
+    -&gt; m (NetMask i hs o)
+genNetMaskWithMWC doRate n g = go n
+  where
+    go :: forall j js. Network j js o -&gt; m (NetMask j js o)
+    go = \case NetOL _    -&gt; return MaskOL
+               NetIL _ ss -&gt; MaskIL &lt;$&gt; randomMask' &lt;*&gt; go ss
+    randomMask' :: forall n. KnownNat n =&gt; m (R n)
+    randomMask' = randomMaskMWC doRate g
+{-# INLINE genNetMaskWithMWC #-}
+
+randomMaskMWC
+    :: forall n m. (KnownNat n, PrimMonad m)
+    =&gt; Double       -- ^ dropout (% to remove)
+    -&gt; Gen (PrimState m)
+    -&gt; m (R n)
+randomMaskMWC doRate g = dvmap (bool 0 1 . (doRate &lt;))
+                       . flip randomVector Uniform
+                     &lt;$&gt; uniform g
+{-# INLINE randomMaskMWC #-}
+
+
+
+compensateDO
+    :: forall i hs o. (KnownNat i, KnownNat o)
+    =&gt; Double       -- ^ how much was DROPPED
+    -&gt; Network i hs o
+    -&gt; Network i hs o
+compensateDO d = go
+  where
+    go :: forall j js. KnownNat j =&gt; Network j js o -&gt; Network j js o
+    go = \case
+      NetOL w   -&gt; NetOL (compLayer w)
+      NetIL w n -&gt; NetIL (compLayer w) (go n)
+    compLayer :: forall i' o'. (KnownNat i', KnownNat o') =&gt; FLayer i' o' -&gt; FLayer i' o'
+    compLayer = \case
+        FLayer b w -&gt; FLayer (konst d' * b) (konst d' * w)
+    d' = 1 / (1 - d)
+{-# INLINE compensateDO #-}
+</span></pre></body></html>

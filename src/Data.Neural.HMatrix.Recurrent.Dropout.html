@@ -31,7 +31,7 @@
 </span><a name="line-31"></a><span>
 </span><a name="line-32"></a><span class="hs-comment">-- should store `diag m` instead of `m`?</span><span>
 </span><a name="line-33"></a><span class="hs-keyword">data</span><span> </span><a name="NetMask"><a href="Data.Neural.HMatrix.Recurrent.Dropout.html#NetMask"><span class="hs-identifier">NetMask</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
-</span><a name="line-34"></a><span>    </span><a name="MaskOL"><a href="Data.Neural.HMatrix.Recurrent.Dropout.html#MaskOL"><span class="hs-identifier">MaskOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Dropout.html#NetMask"><span class="hs-identifier hs-type">NetMask</span></a><span> </span><a href="#local-1627600247"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
+</span><a name="line-34"></a><span>    </span><a name="MaskOL"><a href="Data.Neural.HMatrix.Recurrent.Dropout.html#MaskOL"><span class="hs-identifier">MaskOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="Data.Neural.HMatrix.Recurrent.Dropout.html#NetMask"><span class="hs-identifier hs-type">NetMask</span></a><span> </span><a href="#local-1627603440"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
     MaskIL :: (KnownNat j, KnownNats js)
            =&gt; !(R j) -&gt; !(NetMask j js o) -&gt; NetMask i (j ': js) o
 
@@ -55,6 +55,7 @@ trainSeriesDO na doRate step stepS targ inps0 n0 =
           (ns0M, nu0M)     = toNetworkU n0M
           (dsM, nuShiftsM) = bptt na step targ inps0 ns0M nu0M
           (ns0, nu0)       = toNetworkU n0
+      -- TODO: wait, should this mask changes too
       in  trainStates stepS (nu0 - nuShiftsM) ns0 dsM
 {-# INLINE trainSeriesDO #-}
 
@@ -130,6 +131,7 @@ genNetMaskMWC doRate g = go natsList
              &lt;$&gt; uniform g
 {-# INLINE genNetMaskMWC #-}
 
+-- TODO: is this seriously wrong or what
 compensateDO :: KnownNet i hs o =&gt; Double -&gt; Network i hs o -&gt; Network i hs o
 compensateDO d n =
     case n of

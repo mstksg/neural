@@ -8,6 +8,8 @@
 @package neural
 @version 0.1.0.0
 
+module Data.Neural.HMatrix.FeedForward.Train
+
 module Data.Neural.HMatrix.Utility
 randomVec :: forall n m. (MonadRandom m, KnownNat n) => (Double, Double) -> m (R n)
 randomMat :: forall f n m. (MonadRandom f, KnownNat n, KnownNat m) => (Double, Double) -> f (L n m)
@@ -196,19 +198,53 @@ instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class
 instance Data.Binary.Class.Binary Data.Neural.HMatrix.FLayer.SomeFLayer
 
 module Data.Neural.HMatrix.FeedForward
-type KnownNet i hs o = (KnownNat i, SingI hs, KnownNat o)
 data Network :: Nat -> [Nat] -> Nat -> *
 [NetOL] :: !(FLayer i o) -> Network i '[] o
 [NetIL] :: KnownNat j => !(FLayer i j) -> !(Network j hs o) -> Network i (j : hs) o
 data SomeNet :: *
-[SomeNet] :: KnownNet i hs o => Network i hs o -> SomeNet
+[SomeNet] :: (KnownNat i, KnownNat o) => Network i hs o -> SomeNet
 data OpaqueNet :: Nat -> Nat -> *
-[OpaqueNet] :: SingI hs => Network i hs o -> OpaqueNet i o
-pureNet :: forall i hs o. KnownNet i hs o => (forall j k. (KnownNat j, KnownNat k) => FLayer j k) -> Network i hs o
+[OpaqueNet] :: Network i hs o -> OpaqueNet i o
+zipNet :: forall i hs o. (KnownNat i, KnownNat o) => (forall i' o'. (KnownNat i', KnownNat o') => FLayer i' o' -> FLayer i' o' -> FLayer i' o') -> Network i hs o -> Network i hs o -> Network i hs o
+mapNet :: forall i hs o. (KnownNat i, KnownNat o) => (forall i' o'. (KnownNat i', KnownNat o') => FLayer i' o' -> FLayer i' o') -> Network i hs o -> Network i hs o
+putNet :: (KnownNat i, KnownNat o) => Network i hs o -> Put
+getNet :: (KnownNat i, KnownNat o) => Sing hs -> Get (Network i hs o)
+hiddenSing :: forall i hs o. Network i hs o -> Sing hs
+pureNet :: forall i hs o. (KnownNat i, KnownNat o, SingI hs) => (forall j k. (KnownNat j, KnownNat k) => FLayer j k) -> Network i hs o
 runNetwork :: forall i hs o. (KnownNat i, KnownNat o) => NeuralActs Double -> Network i hs o -> R i -> R o
 trainSample :: forall i hs o. (KnownNat i, KnownNat o) => NeuralActs (Forward Double) -> Double -> R i -> R o -> Network i hs o -> Network i hs o
-randomNet :: forall m i hs o. (MonadRandom m, KnownNet i hs o) => (Double, Double) -> m (Network i hs o)
-randomNetMWC :: forall m i hs o. (PrimMonad m, KnownNet i hs o) => (Double, Double) -> Gen (PrimState m) -> m (Network i hs o)
+traverseOpaqueNet :: Applicative f => (forall hs. Network i hs o -> f (Network i' hs o')) -> OpaqueNet i o -> f (OpaqueNet i' o')
+mapOpaqueNet :: (forall hs. Network i hs o -> Network i' hs o') -> OpaqueNet i o -> OpaqueNet i' o'
+randomNet :: forall m i hs o. (MonadRandom m, KnownNat i, KnownNat o, SingI hs) => (Double, Double) -> m (Network i hs o)
+randomNetSing :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m) => Sing hs -> (Double, Double) -> m (Network i hs o)
+randomNetMWC :: forall m i hs o. (PrimMonad m, KnownNat i, KnownNat o, SingI hs) => (Double, Double) -> Gen (PrimState m) -> m (Network i hs o)
+randomNetMWCSing :: forall m i hs o. (PrimMonad m, KnownNat i, KnownNat o) => Sing hs -> (Double, Double) -> Gen (PrimState m) -> m (Network i hs o)
+randomONet :: (KnownNat i, KnownNat o, MonadRandom m) => [Integer] -> (Double, Double) -> m (OpaqueNet i o)
+randomONetMWC :: (KnownNat i, KnownNat o, PrimMonad m) => [Integer] -> (Double, Double) -> Gen (PrimState m) -> m (OpaqueNet i o)
+runOpaqueNet :: forall i o. (KnownNat i, KnownNat o) => NeuralActs Double -> OpaqueNet i o -> R i -> R o
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o, Data.Singletons.SingI hs) => GHC.Num.Num (Data.Neural.HMatrix.FeedForward.Network i hs o)
+instance Control.DeepSeq.NFData (Data.Neural.HMatrix.FeedForward.Network i hs o)
+instance (GHC.TypeLits.KnownNat i, Data.Singletons.SingI hs, GHC.TypeLits.KnownNat o) => Data.Binary.Class.Binary (Data.Neural.HMatrix.FeedForward.Network i hs o)
+instance (GHC.TypeLits.KnownNat i, GHC.TypeLits.KnownNat o) => Data.Binary.Class.Binary (Data.Neural.HMatrix.FeedForward.OpaqueNet i o)
+instance Control.DeepSeq.NFData (Data.Neural.HMatrix.FeedForward.OpaqueNet i o)
+instance Data.Binary.Class.Binary Data.Neural.HMatrix.FeedForward.SomeNet
+instance Control.DeepSeq.NFData Data.Neural.HMatrix.FeedForward.SomeNet
+
+module Data.Neural.HMatrix.FeedForward.Dropout
+data NetMask :: Nat -> [Nat] -> Nat -> *
+[MaskOL] :: NetMask i '[] o
+[MaskIL] :: KnownNat j => !(R j) -> !(NetMask j js o) -> NetMask i (j : js) o
+trainSampleDO :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m) => NeuralActs (Forward Double) -> Double -> Double -> R i -> R o -> Network i hs o -> m (Network i hs o)
+trainSampleDOMWC :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m, PrimMonad m) => NeuralActs (Forward Double) -> Double -> Double -> R i -> R o -> Network i hs o -> Gen (PrimState m) -> m (Network i hs o)
+trainStep :: forall i hs o. (KnownNat i, KnownNat o) => NeuralActs (Forward Double) -> Double -> R i -> R o -> Network i hs o -> Network i hs o
+applyMask :: (KnownNat i, KnownNat o) => NetMask i hs o -> Network i hs o -> Network i hs o
+genNetMask :: forall i hs o m. (SingI hs, MonadRandom m) => Double -> m (NetMask i hs o)
+genNetMaskWith :: forall i hs o m. MonadRandom m => Double -> Network i hs o -> m (NetMask i hs o)
+randomMask :: forall n m. (KnownNat n, MonadRandom m) => Double -> m (R n)
+genNetMaskMWC :: forall i hs o m. (SingI hs, PrimMonad m) => Double -> Gen (PrimState m) -> m (NetMask i hs o)
+genNetMaskWithMWC :: forall i hs o m. PrimMonad m => Double -> Network i hs o -> Gen (PrimState m) -> m (NetMask i hs o)
+randomMaskMWC :: forall n m. (KnownNat n, PrimMonad m) => Double -> Gen (PrimState m) -> m (R n)
+compensateDO :: forall i hs o. (KnownNat i, KnownNat o) => Double -> Network i hs o -> Network i hs o
 
 module Data.Neural.Recurrent
 data RNode :: Nat -> Nat -> * -> *
