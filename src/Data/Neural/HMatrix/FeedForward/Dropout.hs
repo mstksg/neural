@@ -3,7 +3,9 @@
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeOperators       #-}
 
 module Data.Neural.HMatrix.FeedForward.Dropout where
@@ -30,6 +32,8 @@ data NetMask :: Nat -> [Nat] -> Nat -> * where
            -> NetMask i (j ': js) o
 
 infixr 5 `MaskIL`
+
+deriving instance Show (NetMask i hs o)
 
 trainSampleDO
     :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m)
@@ -203,11 +207,12 @@ randomMaskMWC doRate g = dvmap (bool 0 1 . (doRate <))
 
 
 compensateDO
-    :: forall i hs o. (KnownNat i, KnownNat o)
+    :: forall i hs o. KnownNat o
     => Double       -- ^ how much was DROPPED
     -> Network i hs o
     -> Network i hs o
-compensateDO d = go
+compensateDO d = \case NetOL w   -> NetOL w
+                       NetIL w n -> NetIL w (go n)
   where
     go :: forall j js. KnownNat j => Network j js o -> Network j js o
     go = \case
@@ -218,3 +223,17 @@ compensateDO d = go
         FLayer b w -> FLayer (konst d' * b) (konst d' * w)
     d' = 1 / (1 - d)
 {-# INLINE compensateDO #-}
+
+traverseNetMask
+    :: forall f i hs o. Applicative f
+    => (forall n. KnownNat n => R n -> f (R n))
+    -> NetMask i hs o
+    -> f (NetMask i hs o)
+traverseNetMask f = go
+  where
+    go  :: forall h hs'. ()
+        => NetMask h hs' o
+        -> f (NetMask h hs' o)
+    go = \case
+      MaskOL     -> pure MaskOL
+      MaskIL v m -> MaskIL <$> f v <*> go m

@@ -42,9 +42,9 @@ data SomeNet :: * where
 data OpaqueNet :: Nat -> Nat -> * where
     OpaqueNet :: Network i hs o -> OpaqueNet i o
 
--- deriving instance KnownNet i hs o => Show (Network i hs o)
--- deriving instance Show SomeNet
--- deriving instance (KnownNat i, KnownNat o) => Show (OpaqueNet i o)
+deriving instance (KnownNat i, KnownNat o) => Show (Network i hs o)
+deriving instance (KnownNat i, KnownNat o) => Show (OpaqueNet i o)
+deriving instance Show SomeNet
 
 zipNet
     :: forall i hs o. (KnownNat i, KnownNat o)
@@ -300,3 +300,17 @@ runOpaqueNet
 runOpaqueNet na oN x = case oN of
                          OpaqueNet net -> runNetwork na net x
 {-# INLINE runOpaqueNet #-}
+
+traverseNet
+    :: forall f i hs o. (Applicative f, KnownNat i, KnownNat o)
+    => (forall m n. (KnownNat m, KnownNat n) => FLayer m n -> f (FLayer m n))
+    -> Network i hs o
+    -> f (Network i hs o)
+traverseNet f = go
+  where
+    go :: forall h hs'. (KnownNat h)
+       => Network h hs' o
+       -> f (Network h hs' o)
+    go = \case NetOL l   -> NetOL <$> f l
+               NetIL l n -> NetIL <$> f l <*> go n
+
