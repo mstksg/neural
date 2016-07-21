@@ -41,13 +41,13 @@ infixr 5 `MaskIL`
 deriving instance Show (NetMask i hs o)
 
 trainSeriesDO
-    :: forall i hs o m. (KnownNet i hs o, MonadRandom m)
+    :: forall i hs o m f. (KnownNet i hs o, MonadRandom m, Foldable f)
     => NeuralActs (Forward Double)
     -> Double   -- ^ Dropout rate
     -> Double   -- ^ Step size (weights)
     -> Double   -- ^ Step size (state)
     -> R o      -- ^ Target
-    -> [R i]    -- ^ Inputs
+    -> f (R i)  -- ^ Inputs
     -> Network i hs o
     -> m (Network i hs o)
 trainSeriesDO na doRate step stepS targ inps0 n0 =
@@ -61,13 +61,13 @@ trainSeriesDO na doRate step stepS targ inps0 n0 =
 {-# INLINE trainSeriesDO #-}
 
 trainSeriesDOMWC
-    :: forall i hs o m. (KnownNet i hs o, PrimMonad m)
+    :: forall i hs o m f. (KnownNet i hs o, PrimMonad m, Foldable f)
     => NeuralActs (Forward Double)
     -> Double   -- ^ Dropout rate
     -> Double   -- ^ Step size (weights)
     -> Double   -- ^ Step size (state)
     -> R o      -- ^ Target
-    -> [R i]    -- ^ Inputs
+    -> f (R i)  -- ^ Inputs
     -> Network i hs o
     -> Gen (PrimState m)
     -> m (Network i hs o)
