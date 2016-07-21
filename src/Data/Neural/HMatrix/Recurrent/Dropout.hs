@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving  #-}
 {-# LANGUAGE TypeOperators       #-}
@@ -132,11 +133,38 @@ genNetMaskMWC doRate g = go natsList
 {-# INLINE genNetMaskMWC #-}
 
 -- TODO: is this seriously wrong or what
-compensateDO :: KnownNet i hs o => Double -> Network i hs o -> Network i hs o
+compensateDO
+    :: forall i hs o. KnownNet i hs o
+    => Double
+    -> Network i hs o
+    -> Network i hs o
 compensateDO d n =
     case n of
       NetOL _ -> n
       NetIL (RLayer b wI wS s) n' ->
         NetIL (RLayer b wI (konst (1 - d) * wS) s)
               (zipNet (*) (*) (konstNet (1 - d)) n')
+-- compensateDO d = \case
+--     NetOL w   -> NetOL w
+--     NetIL l n -> NetIL l (go n)
+--   where
+--     go  :: forall h hs'. KnownNat h
+--         => Network h hs' o
+--         -> Network h hs' o
+--     go = \case NetOL w   -> NetOL (compFLayer w)
+--                NetIL w n -> NetIL (compRLayer w) (go n)
+--     compFLayer
+--         :: forall i' o'. (KnownNat i', KnownNat o')
+--         => FLayer i' o'
+--         -> FLayer i' o'
+--     compFLayer = \case
+--         FLayer b w       -> FLayer (konst d' * b) (konst d' * w)
+--     compRLayer = \case
+--         RLayer b wI wS s -> RLayer (konst d' * b) (konst d' * wI) (konst d' * wS) s
+
+--     d' = 1 / (1 - d)
 {-# INLINE compensateDO #-}
+
+      -- NetOL w   -> NetOL (compLayer w)
+      -- NetIL w n -> NetIL (compLayer w) (go n)
+    -- d' = 1 / (1 - d)

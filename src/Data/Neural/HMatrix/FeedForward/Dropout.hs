@@ -220,7 +220,7 @@ compensateDO d = \case NetOL w   -> NetOL w
       NetIL w n -> NetIL (compLayer w) (go n)
     compLayer :: forall i' o'. (KnownNat i', KnownNat o') => FLayer i' o' -> FLayer i' o'
     compLayer = \case
-        FLayer b w -> FLayer (konst d' * b) (konst d' * w)
+        FLayer b w -> FLayer b (konst d' * w)
     d' = 1 / (1 - d)
 {-# INLINE compensateDO #-}
 

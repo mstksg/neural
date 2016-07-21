@@ -313,4 +313,5 @@ traverseNet f = go
        -> f (Network h hs' o)
     go = \case NetOL l   -> NetOL <$> f l
                NetIL l n -> NetIL <$> f l <*> go n
+{-# INLINE traverseNet #-}
 
