@@ -21,6 +21,7 @@ module Data.Neural.HMatrix.Recurrent.Train
   where
 
 import           Control.DeepSeq
+import           Data.Foldable
 import           Data.MonoTraversable
 import           Data.Neural.HMatrix.FLayer
 import           Data.Neural.HMatrix.Recurrent
@@ -203,12 +204,12 @@ toNetworkU n = case n of
 {-# INLINE toNetworkU #-}
 
 trainSeries
-    :: forall i hs o. KnownNet i hs o
+    :: forall i hs o f. (KnownNet i hs o, Foldable f)
     => NeuralActs (Forward Double)
     -> Double
     -> Double
     -> R o
-    -> [R i]
+    -> f (R i)
     -> Network i hs o
     -> Network i hs o
 trainSeries na step stepS targ inps0 n0 =
@@ -243,15 +244,15 @@ trainStates stepS = go
                   in  RLayer b wI wS s' `NetIL` go nu' ns' ds'
 
 bptt
-    :: forall i hs o. KnownNet i hs o
+    :: forall i hs o f. (KnownNet i hs o, Foldable f)
     => NeuralActs (Forward Double)
     -> Double
     -> R o
-    -> [R i]
+    -> f (R i)
     -> NetStates i hs o
     -> NetworkU i hs o
     -> (Deltas i hs o, NetworkU i hs o)
-bptt (NA f g) step targ inps0 ns0 nu0 =
+bptt (NA f g) step targ (toList->inps0) ns0 nu0 =
     case inps0 of
       []    -> (pureDeltas 0, 0)
       x0:xs -> let (ds, nuShifts) = goTS x0 ns0 xs

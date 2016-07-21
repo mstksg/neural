@@ -23,6 +23,7 @@ import Control.Applicative
 import Control.DeepSeq
 import Control.Monad.Random
 import Control.Monad.State.Strict
+import Data.Foldable
 import Data.Neural.Recurrent
 import Data.Neural.Types
 import Data.Neural.Utility
@@ -153,15 +154,15 @@ toNetworkU n = case n of
                                in  (s', NetUIL l' n'')
 {-# INLINE toNetworkU #-}
 
-trainSeries :: forall i hs o a. (KnownNet i hs o, Fractional a, NFData a)
+trainSeries :: forall i hs o a f. (KnownNet i hs o, Fractional a, NFData a, Foldable f)
             => NeuralActs (Forward a)
             -> a
             -> a
             -> V o a
-            -> [V i a]
+            -> f (V i a)
             -> Network i hs o a
             -> Network i hs o a
-trainSeries (NA f g) step stepS y inps0 n0 =
+trainSeries (NA f g) step stepS y (toList->inps0) n0 =
     case inps0 of
       [] -> n0
       x0:xs -> let (ds, nuShifts) = goTS x0 ns0 xs
@@ -295,7 +296,7 @@ trainSeries (NA f g) step stepS y inps0 n0 =
         -- instead of (o - target), use deltao, weighted average of errors
         delta = deltao * diff f d
     {-# INLINE adjustHidden #-}
-    weightShifts :: Functor f => a -> f a -> f a
+    weightShifts :: forall g. Functor g => a -> g a -> g a
     weightShifts delta = fmap (\x -> delta * x)
     {-# INLINE weightShifts #-}
 
