@@ -15,7 +15,9 @@ module Data.Neural.HMatrix.Recurrent.Train
   , trainStates
   , bptt
   , toNetworkU
+  , RLayerU(..)
   , NetworkU(..)
+  , Deltas(..)
   , NetStates(..)
   )
   where

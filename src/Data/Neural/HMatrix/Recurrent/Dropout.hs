@@ -56,8 +56,7 @@ trainSeriesDO na doRate step stepS targ inps0 n0 =
           (ns0M, nu0M)     = toNetworkU n0M
           (dsM, nuShiftsM) = bptt na step targ inps0 ns0M nu0M
           (ns0, nu0)       = toNetworkU n0
-      -- TODO: wait, should this mask changes too
-      in  trainStates stepS (nu0 - nuShiftsM) ns0 dsM
+      in  trainStates stepS (nu0 - applyMaskU nm nuShiftsM) ns0 (applyMaskD nm dsM)
 {-# INLINE trainSeriesDO #-}
 
 trainSeriesDOMWC
@@ -77,7 +76,7 @@ trainSeriesDOMWC na doRate step stepS targ inps0 n0 g =
           (ns0M, nu0M)     = toNetworkU n0M
           (dsM, nuShiftsM) = bptt na step targ inps0 ns0M nu0M
           (ns0, nu0)       = toNetworkU n0
-      in  trainStates stepS (nu0 - nuShiftsM) ns0 dsM
+      in  trainStates stepS (nu0 - applyMaskU nm nuShiftsM) ns0 (applyMaskD nm dsM)
 {-# INLINE trainSeriesDOMWC #-}
 
 applyMask
@@ -85,21 +84,54 @@ applyMask
     => NetMask i hs o
     -> Network i hs o
     -> Network i hs o
-applyMask nm nn =
-    case nn of
-      NetOL _ -> nn
-      NetIL (RLayer b wI wS s) nn' ->
-        case nm of
-          MaskIL m nm' ->
-            let mM = diag m
-                nnMasked = case applyMask nm' nn' of
-                             NetOL (FLayer b' w')              ->
-                               NetOL (FLayer b' (w' <> mM))
-                             NetIL (RLayer b' wI' wS' s') nnM' ->
-                               NetIL (RLayer b' (wI' <> mM) wS' s') nnM'
-            in  NetIL (RLayer (m * b) (mM <> wI) (mM <> wS <> mM) (m * s))
-                      nnMasked
+applyMask = \case
+    MaskOL -> id
+    MaskIL m nm -> \case
+      NetIL (RLayer b wI wS s) nn ->
+        let mM = diag m
+            nnMasked = case applyMask nm nn of
+                         NetOL (FLayer b' w') ->
+                           NetOL (FLayer b' (w' <> mM))
+                         NetIL (RLayer b' wI' wS' s') nn' ->
+                           NetIL (RLayer b' (wI' <> mM) wS' s') nn'
+        in  NetIL (RLayer (m * b) (mM <> wI) (mM <> wS <> mM) (m * s))
+                  nnMasked
 {-# INLINE applyMask #-}
+
+applyMaskU
+    :: KnownNet i hs o
+    => NetMask i hs o
+    -> NetworkU i hs o
+    -> NetworkU i hs o
+applyMaskU = \case
+    MaskOL -> id
+    MaskIL m nm -> \case
+      NetUIL (RLayerU b wI wS) nn ->
+        let mM = diag m
+            nnMasked = case applyMaskU nm nn of
+                         NetUOL (FLayer b' w') ->
+                           NetUOL (FLayer b' (w' <> mM))
+                         NetUIL (RLayerU b' wI' wS') nn' ->
+                           NetUIL (RLayerU b' (wI' <> mM) wS') nn'
+        in  NetUIL (RLayerU (m * b) (mM <> wI) (mM <> wS <> mM))
+                   nnMasked
+{-# INLINE applyMaskU #-}
+
+applyMaskD
+    :: forall i hs o. KnownNet i hs o
+    => NetMask i hs o
+    -> Deltas i hs o
+    -> Deltas i hs o
+applyMaskD = \case
+    MaskOL -> id
+    MaskIL m nm -> \case
+      DeltasIL dI dO (dlt :: Deltas h hs' o) ->
+        let dltMasked :: Deltas h hs' o
+            dltMasked = case applyMaskD nm dlt of
+                          DeltasOL dI'          -> DeltasOL (m * dI')
+                          DeltasIL dI' dO' dlt' -> DeltasIL (m * dI') dO' dlt'
+        in  DeltasIL dI (m * dO) dltMasked
+{-# INLINE applyMaskD #-}
 
 genNetMask
     :: forall i hs o m. (KnownNet i hs o, MonadRandom m)
