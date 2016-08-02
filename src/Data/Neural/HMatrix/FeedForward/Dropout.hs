@@ -54,7 +54,7 @@ trainSampleDO na doRate step x0 target net0 =
 {-# INLINE trainSampleDO #-}
 
 trainSampleDOMWC
-    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m, PrimMonad m)
+    :: forall i hs o m. (KnownNat i, KnownNat o, PrimMonad m)
     => NeuralActs (Forward Double)
     -> Double           -- ^ dropout rate (how much to DROP)
     -> Double           -- ^ learning rate
