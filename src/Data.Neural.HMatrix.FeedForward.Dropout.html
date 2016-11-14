@@ -3,33 +3,37 @@
 </span><a name="line-3"></a><span class="hs-pragma">{-# LANGUAGE GADTs               #-}</span><span>
 </span><a name="line-4"></a><span class="hs-pragma">{-# LANGUAGE KindSignatures      #-}</span><span>
 </span><a name="line-5"></a><span class="hs-pragma">{-# LANGUAGE LambdaCase          #-}</span><span>
-</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
-</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators       #-}</span><span>
-</span><a name="line-8"></a><span>
-</span><a name="line-9"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span><span class="hs-operator">.</span><span class="hs-identifier">Dropout</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-6"></a><span class="hs-pragma">{-# LANGUAGE RankNTypes          #-}</span><span>
+</span><a name="line-7"></a><span class="hs-pragma">{-# LANGUAGE ScopedTypeVariables #-}</span><span>
+</span><a name="line-8"></a><span class="hs-pragma">{-# LANGUAGE StandaloneDeriving  #-}</span><span>
+</span><a name="line-9"></a><span class="hs-pragma">{-# LANGUAGE TypeOperators       #-}</span><span>
 </span><a name="line-10"></a><span>
-</span><a name="line-11"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Lens</span><span>
-</span><a name="line-12"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Primitive</span><span>
-</span><a name="line-13"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span> </span><span class="hs-keyword">hiding</span><span>     </span><span class="hs-special">(</span><span class="hs-identifier hs-var">uniform</span><span class="hs-special">)</span><span>
-</span><a name="line-14"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Bool</span><span>
-</span><a name="line-15"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FLayer.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FLayer</span></a><span>
-</span><a name="line-16"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FeedForward.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span></a><span>
-</span><a name="line-17"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>               </span><span class="hs-special">(</span><a href="Data.Neural.Activation.html#NeuralActs"><span class="hs-identifier hs-type">NeuralActs</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
-</span><a name="line-18"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span>
-</span><a name="line-19"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">Prelude</span><span>
-</span><a name="line-20"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
-</span><a name="line-21"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">AD</span><span class="hs-operator">.</span><span class="hs-identifier">Rank1</span><span class="hs-operator">.</span><span class="hs-identifier">Forward</span><span>
-</span><a name="line-22"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">LinearAlgebra</span><span class="hs-operator">.</span><span class="hs-identifier">Static</span><span>
-</span><a name="line-23"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">System</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span class="hs-operator">.</span><span class="hs-identifier">MWC</span><span>
-</span><a name="line-24"></a><span>
-</span><a name="line-25"></a><span class="hs-keyword">data</span><span> </span><a name="NetMask"><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#NetMask"><span class="hs-identifier">NetMask</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
-</span><a name="line-26"></a><span>    </span><a name="MaskOL"><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#MaskOL"><span class="hs-identifier">MaskOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#NetMask"><span class="hs-identifier hs-type">NetMask</span></a><span> </span><a href="#local-1627581500"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
+</span><a name="line-11"></a><span class="hs-keyword">module</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span><span class="hs-operator">.</span><span class="hs-identifier">Dropout</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-12"></a><span>
+</span><a name="line-13"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Lens</span><span>
+</span><a name="line-14"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Primitive</span><span>
+</span><a name="line-15"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Control</span><span class="hs-operator">.</span><span class="hs-identifier">Monad</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span> </span><span class="hs-keyword">hiding</span><span>     </span><span class="hs-special">(</span><span class="hs-identifier hs-var">uniform</span><span class="hs-special">)</span><span>
+</span><a name="line-16"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Bool</span><span>
+</span><a name="line-17"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FLayer.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FLayer</span></a><span>
+</span><a name="line-18"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.HMatrix.FeedForward.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">HMatrix</span><span class="hs-operator">.</span><span class="hs-identifier">FeedForward</span></a><span>
+</span><a name="line-19"></a><span class="hs-keyword">import</span><span>           </span><a href="Data.Neural.Types.html"><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Neural</span><span class="hs-operator">.</span><span class="hs-identifier">Types</span></a><span>               </span><span class="hs-special">(</span><a href="Data.Neural.Activation.html#NeuralActs"><span class="hs-identifier hs-type">NeuralActs</span></a><span class="hs-special">(</span><span class="hs-glyph">..</span><span class="hs-special">)</span><span class="hs-special">)</span><span>
+</span><a name="line-20"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span>
+</span><a name="line-21"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">Prelude</span><span>
+</span><a name="line-22"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Singletons</span><span class="hs-operator">.</span><span class="hs-identifier">TypeLits</span><span>
+</span><a name="line-23"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">AD</span><span class="hs-operator">.</span><span class="hs-identifier">Rank1</span><span class="hs-operator">.</span><span class="hs-identifier">Forward</span><span>
+</span><a name="line-24"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">Numeric</span><span class="hs-operator">.</span><span class="hs-identifier">LinearAlgebra</span><span class="hs-operator">.</span><span class="hs-identifier">Static</span><span>
+</span><a name="line-25"></a><span class="hs-keyword">import</span><span>           </span><span class="hs-identifier">System</span><span class="hs-operator">.</span><span class="hs-identifier">Random</span><span class="hs-operator">.</span><span class="hs-identifier">MWC</span><span>
+</span><a name="line-26"></a><span>
+</span><a name="line-27"></a><span class="hs-keyword">data</span><span> </span><a name="NetMask"><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#NetMask"><span class="hs-identifier">NetMask</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
+</span><a name="line-28"></a><span>    </span><a name="MaskOL"><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#MaskOL"><span class="hs-identifier">MaskOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.Dropout.html#NetMask"><span class="hs-identifier hs-type">NetMask</span></a><span> </span><a href="#local-1627581790"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
     MaskIL :: KnownNat j
            =&gt; !(R j)
            -&gt; !(NetMask j js o)
            -&gt; NetMask i (j ': js) o
 
 infixr 5 `MaskIL`
+
+deriving instance Show (NetMask i hs o)
 
 trainSampleDO
     :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m)
@@ -50,7 +54,7 @@ trainSampleDO na doRate step x0 target net0 =
 {-# INLINE trainSampleDO #-}
 
 trainSampleDOMWC
-    :: forall i hs o m. (KnownNat i, KnownNat o, MonadRandom m, PrimMonad m)
+    :: forall i hs o m. (KnownNat i, KnownNat o, PrimMonad m)
     =&gt; NeuralActs (Forward Double)
     -&gt; Double           -- ^ dropout rate (how much to DROP)
     -&gt; Double           -- ^ learning rate
@@ -203,11 +207,12 @@ randomMaskMWC doRate g = dvmap (bool 0 1 . (doRate &lt;))
 
 
 compensateDO
-    :: forall i hs o. (KnownNat i, KnownNat o)
+    :: forall i hs o. KnownNat o
     =&gt; Double       -- ^ how much was DROPPED
     -&gt; Network i hs o
     -&gt; Network i hs o
-compensateDO d = go
+compensateDO d = \case NetOL w   -&gt; NetOL w
+                       NetIL w n -&gt; NetIL w (go n)
   where
     go :: forall j js. KnownNat j =&gt; Network j js o -&gt; Network j js o
     go = \case
@@ -215,7 +220,21 @@ compensateDO d = go
       NetIL w n -&gt; NetIL (compLayer w) (go n)
     compLayer :: forall i' o'. (KnownNat i', KnownNat o') =&gt; FLayer i' o' -&gt; FLayer i' o'
     compLayer = \case
-        FLayer b w -&gt; FLayer (konst d' * b) (konst d' * w)
+        FLayer b w -&gt; FLayer b (konst d' * w)
     d' = 1 / (1 - d)
 {-# INLINE compensateDO #-}
+
+traverseNetMask
+    :: forall f i hs o. Applicative f
+    =&gt; (forall n. KnownNat n =&gt; R n -&gt; f (R n))
+    -&gt; NetMask i hs o
+    -&gt; f (NetMask i hs o)
+traverseNetMask f = go
+  where
+    go  :: forall h hs'. ()
+        =&gt; NetMask h hs' o
+        -&gt; f (NetMask h hs' o)
+    go = \case
+      MaskOL     -&gt; pure MaskOL
+      MaskIL v m -&gt; MaskIL &lt;$&gt; f v &lt;*&gt; go m
 </span></pre></body></html>

@@ -30,7 +30,7 @@
 </span><a name="line-30"></a><span class="hs-keyword">import</span><span> </span><span class="hs-keyword">qualified</span><span> </span><span class="hs-identifier">Data</span><span class="hs-operator">.</span><span class="hs-identifier">Binary</span><span>                  </span><span class="hs-keyword">as</span><span> </span><span class="hs-identifier">B</span><span>
 </span><a name="line-31"></a><span>
 </span><a name="line-32"></a><span class="hs-keyword">data</span><span> </span><a name="Network"><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier">Network</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-special">[</span><span class="hs-identifier hs-type">Nat</span><span class="hs-special">]</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-identifier hs-type">Nat</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><span class="hs-operator hs-type">*</span><span> </span><span class="hs-keyword">where</span><span>
-</span><a name="line-33"></a><span>    </span><a name="NetOL"><a href="Data.Neural.HMatrix.FeedForward.html#NetOL"><span class="hs-identifier">NetOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><a href="Data.Neural.HMatrix.FLayer.html#FLayer"><span class="hs-identifier hs-type">FLayer</span></a><span> </span><a href="#local-1627578849"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627578850"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier hs-type">Network</span></a><span> </span><a href="#local-1627578849"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
+</span><a name="line-33"></a><span>    </span><a name="NetOL"><a href="Data.Neural.HMatrix.FeedForward.html#NetOL"><span class="hs-identifier">NetOL</span></a></a><span> </span><span class="hs-glyph">::</span><span> </span><span class="hs-glyph">!</span><span class="hs-special">(</span><a href="Data.Neural.HMatrix.FLayer.html#FLayer"><span class="hs-identifier hs-type">FLayer</span></a><span> </span><a href="#local-1627578850"><span class="hs-identifier hs-type">i</span></a><span> </span><a href="#local-1627578851"><span class="hs-identifier hs-type">o</span></a><span class="hs-special">)</span><span> </span><span class="hs-glyph">-&gt;</span><span> </span><a href="Data.Neural.HMatrix.FeedForward.html#Network"><span class="hs-identifier hs-type">Network</span></a><span> </span><a href="#local-1627578850"><span class="hs-identifier hs-type">i</span></a><span> </span><span class="hs-char">'[] o
     NetIL :: KnownNat j
           =&gt; !(FLayer i j) -&gt; !(Network j hs o) -&gt; Network i (j ': hs) o
 
@@ -42,9 +42,9 @@ data SomeNet :: * where
 data OpaqueNet :: Nat -&gt; Nat -&gt; * where
     OpaqueNet :: Network i hs o -&gt; OpaqueNet i o
 
--- deriving instance KnownNet i hs o =&gt; Show (Network i hs o)
--- deriving instance Show SomeNet
--- deriving instance (KnownNat i, KnownNat o) =&gt; Show (OpaqueNet i o)
+deriving instance (KnownNat i, KnownNat o) =&gt; Show (Network i hs o)
+deriving instance (KnownNat i, KnownNat o) =&gt; Show (OpaqueNet i o)
+deriving instance Show SomeNet
 
 zipNet
     :: forall i hs o. (KnownNat i, KnownNat o)
@@ -300,4 +300,19 @@ runOpaqueNet
 runOpaqueNet na oN x = case oN of
                          OpaqueNet net -&gt; runNetwork na net x
 {-# INLINE runOpaqueNet #-}
+
+traverseNet
+    :: forall f i hs o. (Applicative f, KnownNat i, KnownNat o)
+    =&gt; (forall m n. (KnownNat m, KnownNat n) =&gt; FLayer m n -&gt; f (FLayer m n))
+    -&gt; Network i hs o
+    -&gt; f (Network i hs o)
+traverseNet f = go
+  where
+    go :: forall h hs'. (KnownNat h)
+       =&gt; Network h hs' o
+       -&gt; f (Network h hs' o)
+    go = \case NetOL l   -&gt; NetOL &lt;$&gt; f l
+               NetIL l n -&gt; NetIL &lt;$&gt; f l &lt;*&gt; go n
+{-# INLINE traverseNet #-}
+
 </span></pre></body></html>
